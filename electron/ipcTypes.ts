@@ -8,7 +8,8 @@ export interface Rect {
 	height: number;
 }
 
-export type CaptureAction = "copy" | "save" | "edit";
+/** copy-path：保存到截图库后把文件路径写进剪贴板。 */
+export type CaptureAction = "copy" | "copy-path" | "save" | "edit";
 
 /** 选区窗口拿到的冻结画面。 */
 export interface CaptureSessionInfo {

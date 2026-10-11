@@ -1,4 +1,4 @@
-import { Copy, Download, Pencil, X, type LucideIcon } from "lucide-react";
+import { Copy, Download, Link, Pencil, X, type LucideIcon } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -272,7 +272,8 @@ export function RegionSelector() {
 					<ToolbarButton icon={Pencil} label="编辑" onClick={() => finish("edit")} />
 					<ToolbarButton icon={Download} label="保存" hint="Ctrl+S" onClick={() => finish("save")} />
 					<ToolbarButton icon={X} label="取消" hint="Esc" onClick={cancel} />
-					<ToolbarButton icon={Copy} label="复制" hint="Enter" primary onClick={() => finish("copy")} />
+					<ToolbarButton icon={Link} label="复制路径" onClick={() => finish("copy-path")} />
+					<ToolbarButton icon={Copy} label="复制图片" hint="Enter" onClick={() => finish("copy")} />
 				</div>
 			)}
 		</div>
@@ -283,20 +284,15 @@ interface ToolbarButtonProps {
 	icon: LucideIcon;
 	label: string;
 	hint?: string;
-	primary?: boolean;
 	onClick: () => void;
 }
 
-function ToolbarButton({ icon: Icon, label, hint, primary, onClick }: ToolbarButtonProps) {
+function ToolbarButton({ icon: Icon, label, hint, onClick }: ToolbarButtonProps) {
 	return (
 		<button
 			type="button"
 			title={hint ? `${label} (${hint})` : label}
-			className={`flex h-full items-center gap-1.5 rounded-xl px-3 text-sm font-bold transition-all duration-200 active:scale-95 ${
-				primary
-					? "bg-apple-blue text-white shadow-key-blue-sm hover:bg-apple-blue-hover active:translate-y-0.5 active:shadow-none"
-					: "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-			}`}
+			className="flex h-full items-center gap-1.5 rounded-xl px-3 text-sm font-bold text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-gray-900 active:scale-95"
 			onClick={onClick}
 		>
 			<Icon size={16} strokeWidth={2.5} />

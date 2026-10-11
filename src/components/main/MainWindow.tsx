@@ -165,8 +165,6 @@ export function MainWindow() {
 					onClose={() => setSettingsOpen(false)}
 					onChangeShortcut={changeShortcut}
 					onRecordingChange={(recording) => void api.suspendShortcut(recording)}
-					onChooseSaveDir={() => void chooseSaveDir()}
-					onOpenSaveDir={() => void api.openSaveDir()}
 				/>
 			)}
 			<Toast toast={toast} />

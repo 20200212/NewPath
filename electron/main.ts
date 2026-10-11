@@ -321,9 +321,9 @@ async function savePngToLibrary(png: Buffer): Promise<SaveResult> {
 }
 
 /** 截图窗口里直接保存时没有界面可以反馈，用系统通知告诉用户存到了哪里。 */
-function notifySaved(filePath: string) {
+function notifySaved(filePath: string, title = "截图已保存") {
 	if (!Notification.isSupported()) return;
-	const notification = new Notification({ title: "截图已保存", body: path.basename(filePath), silent: true });
+	const notification = new Notification({ title, body: path.basename(filePath), silent: true });
 	notification.on("click", () => shell.showItemInFolder(filePath));
 	notification.show();
 }
@@ -483,6 +483,13 @@ function registerIpc() {
 			case "save": {
 				const result = await savePngToLibrary(image.toPNG());
 				if (result.saved) notifySaved(result.filePath);
+				break;
+			}
+			case "copy-path": {
+				const result = await savePngToLibrary(image.toPNG());
+				if (!result.saved) break;
+				clipboard.writeText(result.filePath);
+				notifySaved(result.filePath, "截图已保存，路径已复制");
 				break;
 			}
 			case "edit":
