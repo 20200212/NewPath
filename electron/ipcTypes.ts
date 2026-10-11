@@ -8,6 +8,12 @@ export interface Rect {
 	height: number;
 }
 
+/** 渲染进程坐标中的一个点，坐标系与 Rect 相同。 */
+export interface Point {
+	x: number;
+	y: number;
+}
+
 /**
  * copy-path：保存到截图库后把文件路径写进剪贴板；pin：钉在桌面上；
  * stitch：只在拼接模式下使用，把选区追加到编辑窗口。
@@ -26,6 +32,8 @@ export interface CaptureSessionInfo {
 	mimeType: string;
 	scaleFactor: number;
 	mode: CaptureMode;
+	/** 截图开始时光标的位置；鼠标不动也能立刻高亮光标下的窗口。 */
+	cursor: Point;
 }
 
 /** 截图时屏幕上可见的窗口，坐标与 Rect 相同（选区窗口里的 CSS 像素）。 */

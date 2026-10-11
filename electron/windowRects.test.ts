@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRawWindows, toDisplayLocalWindows } from "./windowRects";
+import { parseRawWindows, toDisplayLocalPoint, toDisplayLocalWindows } from "./windowRects";
 
 const identity = (rect: { x: number; y: number; width: number; height: number }) => rect;
 
@@ -51,5 +51,13 @@ describe("windowRects", () => {
 		);
 		expect(result.map((item) => item.title)).toEqual(["前", "后"]);
 		expect(result[0].rect).toEqual({ x: 100, y: 100, width: 200, height: 200 });
+	});
+
+	it("光标位置换算成显示器内坐标", () => {
+		expect(toDisplayLocalPoint({ x: 2000, y: 300 }, { x: 1920, y: 0, width: 1280, height: 720 })).toEqual({ x: 80, y: 300 });
+		expect(toDisplayLocalPoint({ x: -100, y: -50 }, { x: -1280, y: -720, width: 1280, height: 720 })).toEqual({
+			x: 1180,
+			y: 670,
+		});
 	});
 });

@@ -32,6 +32,7 @@ import type {
 	DetectedWindow,
 	OcrResult,
 	PinImageInfo,
+	Point,
 	SaveResult,
 	ScreenshotItem,
 	SensitiveResult,
@@ -43,7 +44,7 @@ import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
 import { findSensitiveRegions, type Identity } from "./sensitiveText";
 import { loadSettings, saveSettings } from "./settings";
 import { WindowListHelper } from "./windowList";
-import { toDisplayLocalWindows } from "./windowRects";
+import { toDisplayLocalPoint, toDisplayLocalWindows } from "./windowRects";
 import { recognizeWithWindowsOcr } from "./windowsOcr";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,6 +78,8 @@ interface CaptureSession {
 	stitchTarget: BrowserWindow | null;
 	/** 截图时屏幕上的窗口，比画面晚到；null 表示还没枚举完。 */
 	windows: DetectedWindow[] | null;
+	/** 截图开始时的光标位置（选区窗口里的 CSS 像素）。 */
+	cursor: Point;
 }
 
 const CAPTURE_ACTIONS: readonly CaptureAction[] = ["copy", "copy-path", "save", "edit", "pin", "stitch"];
@@ -252,7 +255,8 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 	captureStarting = true;
 	const startedAt = performance.now();
 	try {
-		const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+		const cursor = screen.getCursorScreenPoint();
+		const display = screen.getDisplayNearestPoint(cursor);
 		// 枚举窗口和截屏同时进行，不拖慢选区窗口的显示
 		const windowsPromise = windowLister.list(process.pid);
 		const image = await captureDisplay(display);
@@ -277,6 +281,7 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 			mode,
 			stitchTarget,
 			windows: null,
+			cursor: toDisplayLocalPoint(cursor, display.bounds),
 		};
 		captureSession = session;
 		void windowsPromise.then((windows) => {
@@ -547,6 +552,7 @@ function registerIpc() {
 			mimeType: "image/jpeg",
 			scaleFactor: session.display.scaleFactor,
 			mode: session.mode,
+			cursor: session.cursor,
 		};
 	});
 

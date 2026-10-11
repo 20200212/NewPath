@@ -1,4 +1,4 @@
-import type { DetectedWindow, Rect } from "./ipcTypes";
+import type { DetectedWindow, Point, Rect } from "./ipcTypes";
 
 /** 窗口枚举脚本返回的一项：物理像素、全局屏幕坐标。 */
 export interface RawWindow {
@@ -68,4 +68,9 @@ export function toDisplayLocalWindows(
 		});
 	}
 	return result;
+}
+
+/** 把全局 DIP 坐标（如 screen.getCursorScreenPoint()）换算成选区窗口里的 CSS 像素。 */
+export function toDisplayLocalPoint(point: Point, displayBounds: Rect): Point {
+	return { x: point.x - displayBounds.x, y: point.y - displayBounds.y };
 }

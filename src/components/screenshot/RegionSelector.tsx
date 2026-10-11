@@ -48,6 +48,8 @@ function handlePosition(handle: Handle): CSSProperties {
 const TOOLBAR_HEIGHT = 44;
 /** 选区外的遮罩：用超大的外阴影盖住选区以外的部分。 */
 const DIM_SHADOW = "0 0 0 100vmax rgba(0, 0, 0, 0.45)";
+/** 窗口列表还没到时单击，最多等这么久；超时仍没有列表就截取整个屏幕。 */
+const PENDING_CLICK_TIMEOUT_MS = 1000;
 
 interface LoadedSession {
 	id: number;
@@ -74,6 +76,19 @@ export function RegionSelector() {
 	const dragRef = useRef<Drag | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const sessionIdRef = useRef(0);
+	/** 最后已知的光标位置：会话开始时由主进程给出，之后随指针事件更新。 */
+	const pointerRef = useRef<Point | null>(null);
+	/** 窗口列表到达前的单击：等列表到了再决定选中哪个窗口。 */
+	const pendingClickRef = useRef<{ point: Point; timer: number } | null>(null);
+
+	const clearPendingClick = useCallback(() => {
+		const pending = pendingClickRef.current;
+		if (!pending) return;
+		window.clearTimeout(pending.timer);
+		pendingClickRef.current = null;
+	}, []);
+
+	useEffect(() => clearPendingClick, [clearPendingClick]);
 
 	// 窗口常驻复用：每次截图开始或结束时同步一次会话
 	useEffect(() => {
@@ -93,6 +108,8 @@ export function RegionSelector() {
 			if (disposed) return;
 			if (!info) {
 				sessionIdRef.current = 0;
+				pointerRef.current = null;
+				clearPendingClick();
 				dragRef.current = null;
 				setDragging(false);
 				setSelection(null);
@@ -113,6 +130,8 @@ export function RegionSelector() {
 				URL.revokeObjectURL(imageUrl);
 				return;
 			}
+			pointerRef.current = info.cursor;
+			clearPendingClick();
 			dragRef.current = null;
 			setDragging(false);
 			setSelection(null);
@@ -126,7 +145,7 @@ export function RegionSelector() {
 			disposed = true;
 			unsubscribe();
 		};
-	}, [api]);
+	}, [api, clearPendingClick]);
 
 	// 窗口列表比画面晚到：会话就绪后拉取一次，之后收到通知再拉取；用会话 id 丢弃过期的列表
 	const sessionId = session?.id;
@@ -166,6 +185,19 @@ export function RegionSelector() {
 		return findWindowAt(windows, point) ?? { title: "", rect: { x: 0, y: 0, ...bounds } };
 	};
 
+	// 列表到达时按最后已知的光标位置补算：鼠标不动也能立刻高亮光标下的窗口，列表到达前的单击也在这时落定；之后的悬停交给 pointermove
+	useEffect(() => {
+		if (!windows) return;
+		const pending = pendingClickRef.current;
+		if (pending) {
+			clearPendingClick();
+			setSelection(windowAt(pending.point)?.rect ?? null);
+			return;
+		}
+		const point = pointerRef.current;
+		if (point && !dragRef.current && !selection) setHover(windowAt(point));
+	}, [windows]);
+
 	const cancel = useCallback(() => {
 		if (api) void api.cancelCapture();
 		else setSelection(null);
@@ -204,6 +236,8 @@ export function RegionSelector() {
 		if (event.button !== 0) return;
 		const point = { x: event.clientX, y: event.clientY };
 		const handle = (event.target as HTMLElement).dataset.handle as Handle | undefined;
+		pointerRef.current = point;
+		clearPendingClick();
 		event.currentTarget.setPointerCapture(event.pointerId);
 		setDragging(true);
 
@@ -218,6 +252,7 @@ export function RegionSelector() {
 
 	const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
 		const point = { x: event.clientX, y: event.clientY };
+		pointerRef.current = point;
 		const drag = dragRef.current;
 		if (!drag) {
 			if (!selection) setHover(windowAt(point));
@@ -239,10 +274,17 @@ export function RegionSelector() {
 		dragRef.current = null;
 		setDragging(false);
 		const point = { x: event.clientX, y: event.clientY };
-		// 单击（没有拖拽）：选中光标下的窗口；还没收到窗口列表时截取整个屏幕
+		// 单击（没有拖拽）：选中光标下的窗口；还没收到窗口列表时先记下来，等列表到了再选，超时就截取整个屏幕
 		if (drag?.kind === "draw" && isClick(drag.start, point)) {
 			setHover(null);
-			setSelection(windowAt(point)?.rect ?? { x: 0, y: 0, ...bounds });
+			if (windows) setSelection(windowAt(point)?.rect ?? null);
+			else {
+				const timer = window.setTimeout(() => {
+					pendingClickRef.current = null;
+					setSelection({ x: 0, y: 0, ...bounds });
+				}, PENDING_CLICK_TIMEOUT_MS);
+				pendingClickRef.current = { point, timer };
+			}
 		}
 	};
 

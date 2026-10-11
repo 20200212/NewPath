@@ -263,7 +263,14 @@ export function Stage(props: StageProps) {
 		if (!frameRef.current) frameRef.current = requestAnimationFrame(draw);
 	};
 
-	useEffect(() => () => cancelAnimationFrame(frameRef.current), []);
+	// 清理时要把 id 清零：StrictMode 下会卸载后再挂载，残留的 id 会让 requestDraw 以为还有一帧在排队，从此不再重绘
+	useEffect(
+		() => () => {
+			cancelAnimationFrame(frameRef.current);
+			frameRef.current = 0;
+		},
+		[],
+	);
 
 	// ---------------------------------------------------------------- 命中与光标
 
