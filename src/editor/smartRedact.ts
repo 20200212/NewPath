@@ -4,17 +4,6 @@ import type { Annotation, RedactAnnotation, RedactMode } from "./types";
 /** 已经被现有打码盖住这么多比例的区域不再重复打码，连续点两次智能打码不会叠加。 */
 const COVERED_RATIO = 0.8;
 
-const KIND_LABELS: Record<SensitiveKind, string> = {
-	username: "用户名",
-	hostname: "主机名",
-	email: "邮箱",
-	ip: "IP 地址",
-	mac: "MAC 地址",
-	secret: "密钥",
-	phone: "手机号",
-	"id-card": "身份证号",
-};
-
 function overlapArea(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
 	const width = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
 	const height = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
@@ -51,7 +40,14 @@ export function regionsToRedactions(
 	return result;
 }
 
-/** 提示里列出找到了哪些类型，例如"邮箱、IP 地址"。 */
-export function describeKinds(regions: readonly SensitiveRegion[]): string {
-	return [...new Set(regions.map((region) => KIND_LABELS[region.kind]))].join("、");
+/**
+ * 提示里列出找到了哪些类型，例如"邮箱、IP 地址"。
+ * 类型名称和分隔符由调用方按界面语言传入（中文用"、"，英文用", "）。
+ */
+export function describeKinds(
+	regions: readonly SensitiveRegion[],
+	labels: Readonly<Record<SensitiveKind, string>>,
+	separator: string,
+): string {
+	return [...new Set(regions.map((region) => labels[region.kind]))].join(separator);
 }

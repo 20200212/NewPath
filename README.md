@@ -33,7 +33,8 @@ npm run build:win    # 打包 Windows 安装包，输出到 release/<版本号>/
 electron/                 主进程（Node.js 环境）
   main.ts                 托盘、全局快捷键、窗口管理、IPC
   preload.ts              暴露给渲染进程的唯一接口 window.electronAPI
-  settings.ts             读写 userData/settings.json（快捷键、保存目录）
+  settings.ts             读写 userData/settings.json（快捷键、保存目录、界面语言）
+  locale.ts / i18n.ts     界面语言解析（跟随系统）和主进程文案（托盘、对话框、通知）
   library.ts              截图库：列目录、文件名校验、写入、目录监听
   capture.ts              用 desktopCapturer 截取整块显示器
   cropRect.ts             CSS 像素选区 → 物理像素裁剪区域
@@ -53,6 +54,7 @@ src/                      渲染进程（浏览器环境，无 Node 权限）
   components/pin/         钉图窗口（PinnedImage）
   components/ui/          通用组件：实体按键风格的按钮、工具按钮、弹窗、提示条、窗口按钮
   editor/                 编辑器纯逻辑：标注模型、几何与命中测试、撤销历史、视口缩放、裁剪、拼接、智能打码、绘制与导出
+  i18n/                   界面多语言：I18nProvider / useI18n，messages/ 按界面分区存放简中、繁中、英文文案
   lib/                    纯函数工具（选区几何、快捷键转换、格式化）和 dev:ui 的 mock 数据
 public/icon.png           托盘与安装包图标（node scripts/generate-icon.mjs 生成的占位图）
 ```
@@ -70,6 +72,8 @@ public/icon.png           托盘与安装包图标（node scripts/generate-icon.
 - 列出截图库里的截图（缩略图、修改日期、大小），目录有变化时自动刷新
 - 每行可以复制图片、复制路径、重命名、删除（移到回收站）、在文件夹中显示；双击在编辑窗口中打开（带缩放条）
 - 用「选择文件夹」或设置弹窗更换截图库位置；在设置里点击快捷键输入框，直接按下新的组合键即可修改截图快捷键
+- 设置里可以切换界面语言（跟随系统 / 简体中文 / 繁體中文 / English），切换后所有窗口和托盘菜单立即生效
+- 设置里可以打开「开机自启」（仅安装版；登录项由系统保存）。开机自启时应用只驻留托盘，不弹出主界面
 - 界面风格：Apple 式的浅色、大圆角、毛玻璃，加上任天堂式的实体按键（底部实色阴影，悬停上浮、按下压平）
 
 ## 约定

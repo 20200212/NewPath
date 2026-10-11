@@ -21,6 +21,7 @@ import { describeKinds, regionsToRedactions } from "@/editor/smartRedact";
 import { movePiece, remapAnnotations, stitchLayout, type StitchLayout } from "@/editor/stitch";
 import { measureText } from "@/editor/textLayout";
 import type { Annotation, EditorDoc, Rect, Tool, ToolStyle } from "@/editor/types";
+import { useI18n } from "@/i18n";
 import { createMockScreenshot } from "@/lib/mockImage";
 import { OcrPanel } from "./OcrPanel";
 import { Stage } from "./Stage";
@@ -96,6 +97,11 @@ export function Editor() {
 	const api = window.electronAPI;
 	const unit = clampUnit(window.devicePixelRatio);
 	const ocrSupported = api ? api.platform === "win32" : true;
+	const { t } = useI18n();
+	const msg = t.editor;
+	/** 只在挂载时运行的副作用用它取文案，切换语言不会让它们重跑。 */
+	const msgRef = useRef(msg);
+	msgRef.current = msg;
 
 	const imagesRef = useRef(new Map<string, PieceImage>());
 	const [imagesVersion, setImagesVersion] = useState(0);
@@ -191,7 +197,7 @@ export function Editor() {
 			const id = addImage(src, image);
 			setHistory(createHistory({ ...EMPTY_DOC, pieces: [{ id, width: image.naturalWidth, height: image.naturalHeight }] }));
 		};
-		void load().catch(() => showToast("图片加载失败", "error"));
+		void load().catch(() => showToast(msgRef.current.toast.loadFailed, "error"));
 		return () => {
 			disposed = true;
 		};
@@ -336,7 +342,7 @@ export function Editor() {
 			try {
 				image = await loadImage(src);
 			} catch {
-				showToast("无法读取这张图片", "error");
+				showToast(msg.toast.readFailed, "error");
 				return;
 			}
 			commitText();
@@ -347,9 +353,9 @@ export function Editor() {
 			const pieces = [...base, { id, width: image.naturalWidth, height: image.naturalHeight }];
 			const to = stitchLayout(pieces, current.gap);
 			commit({ pieces, gap: current.gap, crop: null, annotations: remapAnnotations(current.annotations, from, to) });
-			showToast(`已拼接第 ${pieces.length} 张`);
+			showToast(msg.toast.stitched(pieces.length));
 		},
-		[addImage, commit, commitText, flattenForStitch, showToast],
+		[addImage, commit, commitText, flattenForStitch, showToast, msg],
 	);
 
 	const updatePieces = useCallback(
@@ -366,8 +372,8 @@ export function Editor() {
 	const startStitch = useCallback(() => {
 		commitText();
 		if (api) void api.startStitch();
-		else showToast("dev:ui 模式下可以直接粘贴或拖入图片来拼接");
-	}, [api, commitText, showToast]);
+		else showToast(msg.toast.stitchDevUi);
+	}, [api, commitText, showToast, msg]);
 
 	useEffect(() => {
 		if (!api) return;
@@ -414,26 +420,26 @@ export function Editor() {
 		const png = await exportPng();
 		if (!png) return;
 		if (api) await api.copyImage(png);
-		showToast("已复制到剪贴板");
-	}, [api, exportPng, showToast]);
+		showToast(msg.toast.copied);
+	}, [api, exportPng, showToast, msg]);
 
 	const save = useCallback(
 		async (as: boolean) => {
 			const png = await exportPng();
 			if (!png) return;
-			if (!api) return showToast("dev:ui 模式下不支持保存", "error");
+			if (!api) return showToast(msg.toast.saveDevUi, "error");
 			const result = await (as ? api.saveImageAs(png) : api.saveImage(png));
-			if (result.saved) showToast(`已保存：${result.filePath}`);
+			if (result.saved) showToast(msg.toast.saved(result.filePath));
 		},
-		[api, exportPng, showToast],
+		[api, exportPng, showToast, msg],
 	);
 
 	const pin = useCallback(async () => {
 		const png = await exportPng(PIN_MAX_SIDE);
 		if (!png) return;
 		if (api) await api.pinImage(png);
-		showToast("已钉到桌面");
-	}, [api, exportPng, showToast]);
+		showToast(msg.toast.pinned);
+	}, [api, exportPng, showToast, msg]);
 
 	// ------------------------------------------------------------ OCR 与智能打码
 
@@ -444,14 +450,20 @@ export function Editor() {
 		setOcr({ open: true, status: "loading", text: "", error: null, sourceKey: key });
 		const result = api
 			? await api.recognizeText(await canvasToPng(currentSource))
-			: { ok: true as const, lines: [{ text: "dev:ui 模拟的识别结果", words: [] }, { text: "admin@example.com", words: [] }] };
+			: {
+					ok: true as const,
+					lines: [
+						{ text: msg.ocr.devMockResult, words: [] },
+						{ text: "admin@example.com", words: [] },
+					],
+				};
 		if (sourceKeyRef.current !== key) return;
 		setOcr((current) =>
 			result.ok
 				? { ...current, status: "done", text: result.lines.map((line) => line.text).join("\n") }
 				: { ...current, status: "error", error: result.reason },
 		);
-	}, [api]);
+	}, [api, msg]);
 
 	const toggleOcr = useCallback(() => {
 		if (!ocrSupported) return;
@@ -466,8 +478,8 @@ export function Editor() {
 	const copyOcrText = useCallback(async () => {
 		if (!ocr.text) return;
 		if (api) await api.copyText(ocr.text);
-		showToast("文字已复制");
-	}, [api, ocr.text, showToast]);
+		showToast(msg.toast.textCopied);
+	}, [api, ocr.text, showToast, msg]);
 
 	const smartRedact = useCallback(async () => {
 		const currentSource = sourceRef.current;
@@ -485,12 +497,12 @@ export function Editor() {
 		const strength = redactStrengthFor(style.redactMode, style.strokeSize, unit);
 		const added = regionsToRedactions(result.regions, docRef.current.annotations, style.redactMode, strength, newId);
 		if (!added.length) {
-			showToast(result.regions.length ? "敏感内容都已经打过码了" : "没有发现需要打码的内容");
+			showToast(result.regions.length ? msg.toast.alreadyRedacted : msg.toast.nothingToRedact);
 			return;
 		}
 		commitAnnotations([...docRef.current.annotations, ...added], { select: null });
-		showToast(`已打码 ${added.length} 处（${describeKinds(result.regions)}）`);
-	}, [api, commitAnnotations, commitText, ocrSupported, redactBusy, setTool, showToast, style, tool, unit]);
+		showToast(msg.toast.redacted(added.length, describeKinds(result.regions, msg.sensitiveKinds, msg.kindSeparator)));
+	}, [api, commitAnnotations, commitText, ocrSupported, redactBusy, setTool, showToast, style, msg, tool, unit]);
 
 	// ------------------------------------------------------------ 键盘
 
@@ -687,17 +699,17 @@ export function Editor() {
 								className="pointer-events-auto flex items-center gap-3 rounded-2xl border border-gray-200/80 bg-white/95 py-1.5 pl-4 pr-1.5 shadow-card backdrop-blur-xl"
 							>
 								<Crop size={16} strokeWidth={2.5} className="text-apple-blue" />
-								<span className="text-xs font-bold text-gray-500">拖动框选，拖边角调整；Enter 确认，Esc 取消</span>
+								<span className="whitespace-nowrap text-xs font-bold text-gray-500">{msg.crop.hint}</span>
 								<span className="rounded-lg bg-gray-100 px-2 py-1 font-mono text-xs font-bold text-gray-600">
 									{Math.round(crop.width)} × {Math.round(crop.height)}
 								</span>
-								<ChipButton onClick={() => setCrop(null)}>
+								<ChipButton className="whitespace-nowrap" onClick={() => setCrop(null)}>
 									<X size={14} strokeWidth={2.5} />
-									取消
+									{msg.crop.cancel}
 								</ChipButton>
-								<Button size="sm" onClick={applyCrop}>
+								<Button size="sm" className="whitespace-nowrap" onClick={applyCrop}>
 									<Check size={16} strokeWidth={2.5} />
-									确认裁剪
+									{msg.crop.confirm}
 								</Button>
 							</div>
 						</div>

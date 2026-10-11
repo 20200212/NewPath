@@ -2,6 +2,7 @@ import { FolderSearch, ImageOff } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ScreenshotItem } from "../../../electron/ipcTypes";
 import { ActionChip } from "@/components/ui/Button";
+import { useI18n } from "@/i18n";
 import { formatBytes, formatDate } from "@/lib/format";
 
 export type RowAction = "copy" | "copyPath" | "reveal" | "edit" | "delete";
@@ -74,6 +75,7 @@ function stripExtension(name: string) {
 }
 
 export function ScreenshotRow({ item, loadThumbnail, onAction, onRename }: ScreenshotRowProps) {
+	const { t } = useI18n();
 	const [renaming, setRenaming] = useState(false);
 	const [draft, setDraft] = useState("");
 	const submitting = useRef(false);
@@ -108,7 +110,7 @@ export function ScreenshotRow({ item, loadThumbnail, onAction, onRename }: Scree
 	return (
 		<div
 			className={`group ${ROW_GRID} rounded-2xl border-2 border-gray-100 bg-white px-4 py-3 shadow-sm transition-all hover:border-apple-blue/40 hover:shadow-md`}
-			title="双击打开编辑"
+			title={t.main.row.doubleClickToEdit}
 			onDoubleClick={(event) => {
 				if (!(event.target as HTMLElement).closest("button, input")) onAction("edit", item);
 			}}
@@ -140,20 +142,20 @@ export function ScreenshotRow({ item, loadThumbnail, onAction, onRename }: Scree
 
 			<div className="flex flex-nowrap items-center justify-end gap-2">
 				<ActionChip tone="green" onClick={() => onAction("copy", item)}>
-					复制图片
+					{t.main.row.copyImage}
 				</ActionChip>
 				<ActionChip tone="purple" onClick={() => onAction("copyPath", item)}>
-					复制路径
+					{t.main.row.copyPath}
 				</ActionChip>
 				<ActionChip tone="orange" onClick={startRename}>
-					重命名
+					{t.main.row.rename}
 				</ActionChip>
 				<ActionChip tone="red" onClick={() => onAction("delete", item)}>
-					删除
+					{t.main.row.delete}
 				</ActionChip>
 				<button
 					type="button"
-					title="在文件夹中显示"
+					title={t.main.row.reveal}
 					className="shrink-0 rounded-xl p-1.5 text-gray-300 opacity-0 transition-all hover:bg-blue-50 hover:text-apple-blue group-hover:opacity-100"
 					onClick={() => onAction("reveal", item)}
 				>

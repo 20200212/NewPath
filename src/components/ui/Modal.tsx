@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { useI18n } from "@/i18n";
 
 interface ModalProps {
 	title: string;
@@ -11,6 +12,7 @@ interface ModalProps {
 
 /** 毛玻璃弹窗，Esc 或点击遮罩关闭。 */
 export function Modal({ title, icon, onClose, children, footer }: ModalProps) {
+	const { t } = useI18n();
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
 			if (event.key === "Escape") onClose();
@@ -38,7 +40,7 @@ export function Modal({ title, icon, onClose, children, footer }: ModalProps) {
 					</h2>
 					<button
 						type="button"
-						title="关闭"
+						title={t.common.close}
 						className="group rounded-full bg-gray-100 p-2 text-gray-400 transition-all hover:bg-red-50 hover:text-apple-red active:scale-90"
 						onClick={onClose}
 					>

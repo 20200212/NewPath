@@ -2,6 +2,7 @@ import { CopyPlus, Loader2, Sparkles, Trash2 } from "lucide-react";
 import { ChipButton, ToolButton } from "@/components/ui/ToolButton";
 import { PALETTE } from "@/editor/presets";
 import type { AnnotationKind, ShapeFill, SizeLevel, TextSizeLevel, TextStyle, ToolStyle } from "@/editor/types";
+import { useI18n } from "@/i18n";
 
 interface StyleBarProps {
 	/** 当前工具，或选中标注的类型。 */
@@ -17,18 +18,9 @@ interface StyleBarProps {
 }
 
 const DOT_SIZES = [4, 7, 10];
-const SIZE_LABELS = ["小", "中", "大"];
 const TEXT_SIZE_PREVIEW = [11, 13, 15, 18];
-const TEXT_STYLES: { value: TextStyle; label: string }[] = [
-	{ value: "plain", label: "普通" },
-	{ value: "pill", label: "底色" },
-	{ value: "outline", label: "描边" },
-];
-const FILLS: { value: ShapeFill; label: string }[] = [
-	{ value: "none", label: "描边" },
-	{ value: "soft", label: "浅填充" },
-	{ value: "solid", label: "实心" },
-];
+const TEXT_STYLES: readonly TextStyle[] = ["plain", "pill", "outline"];
+const FILLS: readonly ShapeFill[] = ["none", "soft", "solid"];
 
 function Divider() {
 	return <div className="mx-1 h-6 w-px shrink-0 bg-gray-200" />;
@@ -46,6 +38,8 @@ export function StyleBar({
 	smartRedactBusy,
 	onSmartRedact,
 }: StyleBarProps) {
+	const { t } = useI18n();
+	const text = t.editor.style;
 	const isRedact = kind === "redact";
 	const isText = kind === "text";
 	const customColor = !PALETTE.includes(style.color.toUpperCase()) && !PALETTE.includes(style.color);
@@ -74,7 +68,7 @@ export function StyleBar({
 							);
 						})}
 						<label
-							title="自定义颜色"
+							title={text.customColor}
 							className={`relative h-[22px] w-[22px] shrink-0 cursor-pointer rounded-full border border-black/10 transition-transform hover:scale-110 ${
 								customColor ? "ring-2 ring-apple-blue ring-offset-2" : ""
 							}`}
@@ -97,10 +91,10 @@ export function StyleBar({
 			{isRedact && (
 				<>
 					<ChipButton active={style.redactMode === "pixelate"} onClick={() => onChange({ redactMode: "pixelate" })}>
-						像素化
+						{text.pixelate}
 					</ChipButton>
 					<ChipButton active={style.redactMode === "blur"} onClick={() => onChange({ redactMode: "blur" })}>
-						模糊
+						{text.blur}
 					</ChipButton>
 					<Divider />
 				</>
@@ -111,7 +105,7 @@ export function StyleBar({
 					{TEXT_SIZE_PREVIEW.map((size, level) => (
 						<ChipButton
 							key={size}
-							title={`字号 ${level + 1}（[ / ] 调整）`}
+							title={text.textSizeTitle(level + 1)}
 							className="w-8 px-0"
 							active={style.textSize === level}
 							onClick={() => onChange({ textSize: level as TextSizeLevel })}
@@ -120,9 +114,14 @@ export function StyleBar({
 						</ChipButton>
 					))}
 					<Divider />
-					{TEXT_STYLES.map((item) => (
-						<ChipButton key={item.value} active={style.textStyle === item.value} onClick={() => onChange({ textStyle: item.value })}>
-							{item.label}
+					{TEXT_STYLES.map((value) => (
+						<ChipButton
+							key={value}
+							className="whitespace-nowrap"
+							active={style.textStyle === value}
+							onClick={() => onChange({ textStyle: value })}
+						>
+							{text.textStyles[value]}
 						</ChipButton>
 					))}
 				</>
@@ -130,7 +129,7 @@ export function StyleBar({
 				DOT_SIZES.map((size, level) => (
 					<ChipButton
 						key={size}
-						title={`${SIZE_LABELS[level]}（[ / ] 调整）`}
+						title={text.sizeTitle(text.sizes[level])}
 						className="w-8 px-0"
 						active={style.strokeSize === level}
 						onClick={() => onChange({ strokeSize: level as SizeLevel })}
@@ -143,9 +142,9 @@ export function StyleBar({
 			{(kind === "rect" || kind === "ellipse") && (
 				<>
 					<Divider />
-					{FILLS.map((item) => (
-						<ChipButton key={item.value} active={style.fill === item.value} onClick={() => onChange({ fill: item.value })}>
-							{item.label}
+					{FILLS.map((value) => (
+						<ChipButton key={value} className="whitespace-nowrap" active={style.fill === value} onClick={() => onChange({ fill: value })}>
+							{text.fills[value]}
 						</ChipButton>
 					))}
 				</>
@@ -154,9 +153,9 @@ export function StyleBar({
 			{isRedact && smartRedactAvailable && (
 				<>
 					<Divider />
-					<ChipButton title="识别并遮住邮箱、IP、密钥等（Ctrl+Shift+M）" disabled={smartRedactBusy} onClick={onSmartRedact}>
+					<ChipButton title={text.smartRedactTitle} className="whitespace-nowrap" disabled={smartRedactBusy} onClick={onSmartRedact}>
 						{smartRedactBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={2.5} />}
-						智能打码
+						{text.smartRedact}
 					</ChipButton>
 				</>
 			)}
@@ -164,8 +163,8 @@ export function StyleBar({
 			{hasSelection && (
 				<>
 					<Divider />
-					<ToolButton icon={CopyPlus} label="复制一份" shortcut="Ctrl+D" onClick={onDuplicate} />
-					<ToolButton icon={Trash2} label="删除" shortcut="Delete" className="hover:!bg-red-50 hover:!text-apple-red" onClick={onDelete} />
+					<ToolButton icon={CopyPlus} label={text.duplicate} shortcut="Ctrl+D" onClick={onDuplicate} />
+					<ToolButton icon={Trash2} label={text.delete} shortcut="Delete" className="hover:!bg-red-50 hover:!text-apple-red" onClick={onDelete} />
 				</>
 			)}
 		</div>

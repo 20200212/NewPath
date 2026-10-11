@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { mt } from "./i18n";
 import type { ScreenshotItem } from "./ipcTypes";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg"]);
@@ -23,15 +24,15 @@ export type FileNameResult = { ok: true; name: string } | { ok: false; reason: s
 
 /** 校验重命名的新名字，扩展名始终沿用原文件的（用户输入里带了同样的扩展名也可以）。 */
 export function validateFileName(input: unknown, original: string): FileNameResult {
-	if (typeof input !== "string") return { ok: false, reason: "文件名无效" };
+	if (typeof input !== "string") return { ok: false, reason: mt().invalidFileName };
 	const ext = path.extname(original);
 	let base = input.trim();
 	if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) base = base.slice(0, -ext.length).trimEnd();
-	if (!base) return { ok: false, reason: "文件名不能为空" };
-	if (INVALID_CHARS.test(base)) return { ok: false, reason: '文件名不能包含 \\ / : * ? " < > |' };
-	if (/[. ]$/.test(base)) return { ok: false, reason: "文件名不能以空格或句点结尾" };
-	if (RESERVED_NAMES.test(base)) return { ok: false, reason: "这是系统保留的文件名" };
-	if (base.length > MAX_NAME_LENGTH) return { ok: false, reason: "文件名太长" };
+	if (!base) return { ok: false, reason: mt().fileNameEmpty };
+	if (INVALID_CHARS.test(base)) return { ok: false, reason: mt().fileNameInvalidChars };
+	if (/[. ]$/.test(base)) return { ok: false, reason: mt().fileNameTrailing };
+	if (RESERVED_NAMES.test(base)) return { ok: false, reason: mt().fileNameReserved };
+	if (base.length > MAX_NAME_LENGTH) return { ok: false, reason: mt().fileNameTooLong };
 	return { ok: true, name: base + ext };
 }
 

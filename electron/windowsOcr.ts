@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { nativeImage } from "electron";
+import { mt } from "./i18n";
 import type { OcrResult } from "./ipcTypes";
 import { parseOcrOutput, pickOcrScale, planOcrTiles } from "./ocrResult";
 import { quotePowerShell, runPowerShell } from "./powershell";
@@ -71,7 +72,7 @@ foreach ($file in @(${files.map(quotePowerShell).join(", ")})) {
 /** 识别 PNG 里的文字。小图先放大、长图纵向切块，结果坐标都换算回原图像素。 */
 export async function recognizeWithWindowsOcr(png: Buffer): Promise<OcrResult> {
 	const image = nativeImage.createFromBuffer(png);
-	if (image.isEmpty()) return { ok: false, reason: "无法读取图片" };
+	if (image.isEmpty()) return { ok: false, reason: mt().cannotReadImage };
 	const size = image.getSize();
 	const scale = pickOcrScale(size);
 	const scaled =
@@ -99,12 +100,12 @@ export async function recognizeWithWindowsOcr(png: Buffer): Promise<OcrResult> {
 		const parsed = parseOcrOutput(output, tiles, scale);
 		if (parsed.ok) return parsed;
 		if (parsed.error === "no-engine") {
-			return { ok: false, reason: "系统没有可用的文字识别语言，请在“设置 → 时间和语言 → 语言”中添加中文或英文语言包" };
+			return { ok: false, reason: mt().ocrNoLanguage };
 		}
-		return { ok: false, reason: "文字识别失败" };
+		return { ok: false, reason: mt().ocrFailed };
 	} catch (error) {
 		console.warn("OCR 失败", error);
-		return { ok: false, reason: "文字识别失败，请重试" };
+		return { ok: false, reason: mt().ocrFailedRetry };
 	} finally {
 		void fs.rm(dir, { recursive: true, force: true });
 	}

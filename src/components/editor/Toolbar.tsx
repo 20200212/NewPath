@@ -25,18 +25,19 @@ import { ToolButton, ToolGroup } from "@/components/ui/ToolButton";
 import { WindowControls } from "@/components/ui/WindowControls";
 import { TOOL_KEYS } from "@/editor/keymap";
 import type { Tool } from "@/editor/types";
+import { useI18n } from "@/i18n";
 
-const TOOLS: { id: Tool; icon: LucideIcon; label: string }[] = [
-	{ id: "select", icon: MousePointer2, label: "选择" },
-	{ id: "rect", icon: Square, label: "矩形" },
-	{ id: "ellipse", icon: Circle, label: "椭圆" },
-	{ id: "arrow", icon: MoveUpRight, label: "箭头" },
-	{ id: "line", icon: Minus, label: "直线" },
-	{ id: "pen", icon: Pencil, label: "画笔" },
-	{ id: "highlighter", icon: Highlighter, label: "荧光笔" },
-	{ id: "text", icon: Type, label: "文字" },
-	{ id: "counter", icon: ListOrdered, label: "序号" },
-	{ id: "redact", icon: Grid3x3, label: "马赛克" },
+const TOOLS: { id: Tool; icon: LucideIcon }[] = [
+	{ id: "select", icon: MousePointer2 },
+	{ id: "rect", icon: Square },
+	{ id: "ellipse", icon: Circle },
+	{ id: "arrow", icon: MoveUpRight },
+	{ id: "line", icon: Minus },
+	{ id: "pen", icon: Pencil },
+	{ id: "highlighter", icon: Highlighter },
+	{ id: "text", icon: Type },
+	{ id: "counter", icon: ListOrdered },
+	{ id: "redact", icon: Grid3x3 },
 ];
 
 interface ToolbarProps {
@@ -64,11 +65,13 @@ interface ToolbarProps {
 /** 编辑窗口的标题栏：撤销重做、标注工具、裁剪，右侧是输出操作和窗口按钮。 */
 export function Toolbar(props: ToolbarProps) {
 	const { tool, cropping } = props;
+	const { t } = useI18n();
+	const text = t.editor.toolbar;
 	return (
 		<header className="drag flex h-14 shrink-0 items-center gap-2 border-b border-gray-200/60 bg-white/70 px-3 backdrop-blur-xl">
 			<ToolGroup>
-				<ToolButton icon={Undo2} label="撤销" shortcut="Ctrl+Z" disabled={!props.canUndo} onClick={props.onUndo} />
-				<ToolButton icon={Redo2} label="重做" shortcut="Ctrl+Y" disabled={!props.canRedo} onClick={props.onRedo} />
+				<ToolButton icon={Undo2} label={text.undo} shortcut="Ctrl+Z" disabled={!props.canUndo} onClick={props.onUndo} />
+				<ToolButton icon={Redo2} label={text.redo} shortcut="Ctrl+Y" disabled={!props.canRedo} onClick={props.onRedo} />
 			</ToolGroup>
 
 			<ToolGroup>
@@ -76,7 +79,7 @@ export function Toolbar(props: ToolbarProps) {
 					<ToolButton
 						key={item.id}
 						icon={item.icon}
-						label={item.label}
+						label={t.editor.tools[item.id]}
 						shortcut={TOOL_KEYS[item.id]}
 						active={!cropping && tool === item.id}
 						onClick={() => props.onTool(item.id)}
@@ -85,25 +88,25 @@ export function Toolbar(props: ToolbarProps) {
 			</ToolGroup>
 
 			<ToolGroup>
-				<ToolButton icon={Crop} label="裁剪" shortcut="C" active={cropping} onClick={props.onCrop} />
+				<ToolButton icon={Crop} label={text.crop} shortcut="C" active={cropping} onClick={props.onCrop} />
 			</ToolGroup>
 
 			{/* 中间空白处用来拖动窗口 */}
 			<div className="min-w-4 flex-1 self-stretch" />
 
 			<ToolGroup>
-				<ToolButton icon={ImagePlus} label="拼接：再截一张" shortcut="Ctrl+Shift+A" onClick={props.onStitch} />
+				<ToolButton icon={ImagePlus} label={text.stitch} shortcut="Ctrl+Shift+A" onClick={props.onStitch} />
 				{props.ocrSupported && (
-					<ToolButton icon={ScanText} label="提取文字" shortcut="Ctrl+Shift+T" active={props.ocrOpen} onClick={props.onOcr} />
+					<ToolButton icon={ScanText} label={text.ocr} shortcut="Ctrl+Shift+T" active={props.ocrOpen} onClick={props.onOcr} />
 				)}
-				<ToolButton icon={Pin} label="钉到桌面" shortcut="Ctrl+Shift+P" onClick={props.onPin} />
-				<ToolButton icon={FolderDown} label="另存为" shortcut="Ctrl+Shift+S" onClick={props.onSaveAs} />
-				<ToolButton icon={Download} label="保存到截图库" shortcut="Ctrl+S" onClick={props.onSave} />
+				<ToolButton icon={Pin} label={text.pin} shortcut="Ctrl+Shift+P" onClick={props.onPin} />
+				<ToolButton icon={FolderDown} label={text.saveAs} shortcut="Ctrl+Shift+S" onClick={props.onSaveAs} />
+				<ToolButton icon={Download} label={text.save} shortcut="Ctrl+S" onClick={props.onSave} />
 			</ToolGroup>
 
-			<Button size="sm" title="复制图片（Ctrl+C）" onClick={props.onCopy}>
+			<Button size="sm" title={text.copyTitle} className="whitespace-nowrap" onClick={props.onCopy}>
 				<Copy size={16} strokeWidth={2.5} />
-				复制
+				{text.copy}
 			</Button>
 
 			<div className="h-7 w-px shrink-0 bg-gray-200" />

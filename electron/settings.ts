@@ -1,15 +1,20 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { AppSettings } from "./ipcTypes";
+import { isLanguageSetting } from "./locale";
 
 /** 字段缺失或类型不对时回退到默认值，保证旧版本或手改坏的配置文件也能启动。 */
 export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSettings {
 	const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-	const pick = (key: keyof AppSettings) => {
+	const pick = (key: "captureShortcut" | "saveDir") => {
 		const item = value[key];
 		return typeof item === "string" && item.trim() ? item.trim() : defaults[key];
 	};
-	return { captureShortcut: pick("captureShortcut"), saveDir: pick("saveDir") };
+	return {
+		captureShortcut: pick("captureShortcut"),
+		saveDir: pick("saveDir"),
+		language: isLanguageSetting(value.language) ? value.language : defaults.language,
+	};
 }
 
 export async function loadSettings(file: string, defaults: AppSettings): Promise<AppSettings> {

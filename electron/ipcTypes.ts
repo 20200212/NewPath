@@ -101,11 +101,18 @@ export interface ScreenshotItem {
 	mtimeMs: number;
 }
 
+/** 界面语言。 */
+export type Locale = "zh-CN" | "zh-TW" | "en";
+
+/** 设置里选的语言；system 表示跟随系统。 */
+export type LanguageSetting = "system" | Locale;
+
 export interface AppSettings {
 	/** Electron 加速键格式，例如 Alt+C。 */
 	captureShortcut: string;
 	/** 截图库目录，截图的"保存"直接写到这里。 */
 	saveDir: string;
+	language: LanguageSetting;
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -113,4 +120,10 @@ export type ActionResult = { ok: true } | { ok: false; reason: string };
 export interface SettingsState extends AppSettings {
 	/** 全局快捷键是否注册成功（可能被其他程序占用）。 */
 	shortcutRegistered: boolean;
+	/** 按设置和系统语言解析出的实际界面语言。 */
+	locale: Locale;
+	/** 开机自启以系统里的登录项为准，不写进设置文件。 */
+	openAtLogin: boolean;
+	/** 开发模式和 Linux 下不支持开机自启。 */
+	openAtLoginSupported: boolean;
 }

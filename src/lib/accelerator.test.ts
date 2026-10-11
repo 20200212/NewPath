@@ -44,9 +44,18 @@ describe("acceleratorFromKey", () => {
 	});
 
 	it("普通键缺少修饰键时拒绝", () => {
-		expect(acceleratorFromKey(press("a", "KeyA")).status).toBe("invalid");
-		expect(acceleratorFromKey(press("A", "KeyA", { shiftKey: true })).status).toBe("invalid");
-		expect(acceleratorFromKey(press("Unidentified", "IntlRo", { ctrlKey: true })).status).toBe("invalid");
+		expect(acceleratorFromKey(press("a", "KeyA"))).toEqual({ status: "invalid", reason: "needs-modifier" });
+		expect(acceleratorFromKey(press("A", "KeyA", { shiftKey: true }))).toEqual({
+			status: "invalid",
+			reason: "needs-modifier",
+		});
+	});
+
+	it("无法识别的按键返回 unsupported", () => {
+		expect(acceleratorFromKey(press("Unidentified", "IntlRo", { ctrlKey: true }))).toEqual({
+			status: "invalid",
+			reason: "unsupported",
+		});
 	});
 });
 

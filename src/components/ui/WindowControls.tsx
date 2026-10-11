@@ -1,4 +1,5 @@
 import { Minus, Square, X } from "lucide-react";
+import { useI18n } from "@/i18n";
 
 interface WindowControlsProps {
 	onMinimize: () => void;
@@ -9,11 +10,12 @@ interface WindowControlsProps {
 
 /** 无边框窗口右上角的最小化 / 最大化 / 关闭按钮。 */
 export function WindowControls({ onMinimize, onMaximize, onClose }: WindowControlsProps) {
+	const { t } = useI18n();
 	return (
 		<div className="no-drag flex shrink-0 items-center gap-1">
 			<button
 				type="button"
-				title="最小化"
+				title={t.common.minimize}
 				className="rounded-xl p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700 active:scale-90"
 				onClick={onMinimize}
 			>
@@ -22,7 +24,7 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
 			{onMaximize && (
 				<button
 					type="button"
-					title="最大化 / 还原"
+					title={t.common.maximizeRestore}
 					className="rounded-xl p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700 active:scale-90"
 					onClick={onMaximize}
 				>
@@ -31,7 +33,7 @@ export function WindowControls({ onMinimize, onMaximize, onClose }: WindowContro
 			)}
 			<button
 				type="button"
-				title="关闭"
+				title={t.common.close}
 				className="group rounded-xl p-2 text-gray-400 transition-all hover:bg-red-50 hover:text-apple-red active:scale-90"
 				onClick={onClose}
 			>

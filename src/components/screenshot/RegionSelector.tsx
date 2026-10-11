@@ -9,6 +9,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CaptureAction, CaptureMode, DetectedWindow } from "../../../electron/ipcTypes";
+import { useI18n } from "@/i18n";
 import { createMockScreenshot, createMockWindows } from "@/lib/mockImage";
 import {
 	containsPoint,
@@ -68,6 +69,8 @@ async function decodeImage(url: string) {
 /** 全屏选区窗口：背景是冻结的屏幕画面，悬停高亮窗口、单击选中，或拖拽选择区域。 */
 export function RegionSelector() {
 	const api = window.electronAPI;
+	const { t } = useI18n();
+	const text = t.capture.region;
 	const [session, setSession] = useState<LoadedSession | null>(null);
 	const [selection, setSelection] = useState<Rect | null>(null);
 	/** 截图时屏幕上的窗口；null 表示还没收到列表，这时不做悬停高亮。 */
@@ -362,7 +365,7 @@ export function RegionSelector() {
 
 			{!selection && (
 				<p className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#1C1C1E]/85 px-5 py-2.5 text-sm font-bold tracking-wide text-white shadow-2xl backdrop-blur-md">
-					{stitching ? "选择要拼接的区域" : "单击选择窗口，拖动选择区域"} · Esc 退出
+					{stitching ? text.hintStitch : text.hintCapture} · {text.hintEsc}
 				</p>
 			)}
 
@@ -381,17 +384,17 @@ export function RegionSelector() {
 				>
 					{stitching ? (
 						<>
-							<ToolbarButton icon={ImagePlus} label="添加到拼接" hint="Enter" onClick={() => finish("stitch")} />
-							<ToolbarButton icon={X} label="取消" hint="Esc" onClick={cancel} />
+							<ToolbarButton icon={ImagePlus} label={text.addToStitch} hint="Enter" onClick={() => finish("stitch")} />
+							<ToolbarButton icon={X} label={text.cancel} hint="Esc" onClick={cancel} />
 						</>
 					) : (
 						<>
-							<ToolbarButton icon={Pencil} label="编辑" onClick={() => finish("edit")} />
-							<ToolbarButton icon={Download} label="保存" hint="Ctrl+S" onClick={() => finish("save")} />
-							<ToolbarButton icon={Link} label="复制路径" onClick={() => finish("copy-path")} />
-							<ToolbarButton icon={Copy} label="复制图片" hint="Enter" onClick={() => finish("copy")} />
-							<ToolbarButton icon={Pin} label="钉住" onClick={() => finish("pin")} />
-							<ToolbarButton icon={X} label="取消" hint="Esc" onClick={cancel} />
+							<ToolbarButton icon={Pencil} label={text.edit} onClick={() => finish("edit")} />
+							<ToolbarButton icon={Download} label={text.save} hint="Ctrl+S" onClick={() => finish("save")} />
+							<ToolbarButton icon={Link} label={text.copyPath} onClick={() => finish("copy-path")} />
+							<ToolbarButton icon={Copy} label={text.copyImage} hint="Enter" onClick={() => finish("copy")} />
+							<ToolbarButton icon={Pin} label={text.pin} onClick={() => finish("pin")} />
+							<ToolbarButton icon={X} label={text.cancel} hint="Esc" onClick={cancel} />
 						</>
 					)}
 				</div>

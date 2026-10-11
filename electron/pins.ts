@@ -1,4 +1,5 @@
 import { screen, type BrowserWindow, type IpcMainInvokeEvent, type NativeImage } from "electron";
+import { mt } from "./i18n";
 import type { PinImageInfo } from "./ipcTypes";
 import { initialPinBounds, zoomPinBounds, type Point, type Size } from "./pinGeometry";
 
@@ -62,7 +63,7 @@ export class PinManager {
 			fullscreenable: false,
 			skipTaskbar: true,
 			hasShadow: false,
-			title: "NewPath 钉图",
+			title: mt().pinWindowTitle,
 		});
 		win.setAlwaysOnTop(true, "floating");
 

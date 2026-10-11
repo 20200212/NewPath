@@ -4,6 +4,8 @@ import type {
 	CaptureFinishPayload,
 	CaptureSessionInfo,
 	CaptureWindowsInfo,
+	LanguageSetting,
+	Locale,
 	OcrResult,
 	PinImageInfo,
 	SaveResult,
@@ -24,6 +26,10 @@ function subscribe(channel: string, callback: () => void) {
 /** 渲染进程唯一能访问的主进程能力，新增 IPC 时必须在这里显式列出。 */
 const api = {
 	platform: process.platform,
+
+	// 所有窗口：界面语言（切换时收到 locale:changed，再主动拉取）
+	getLocale: (): Promise<Locale> => ipcRenderer.invoke("locale:get"),
+	onLocaleChanged: (callback: () => void) => subscribe("locale:changed", callback),
 
 	// 选区窗口（常驻复用：每次截图开始、结束时收到 capture:changed，再主动拉取会话）
 	getCaptureSession: (): Promise<CaptureSessionInfo | null> =>
@@ -88,6 +94,10 @@ const api = {
 	/** 返回新的设置；用户取消时返回 null。 */
 	chooseSaveDir: (): Promise<SettingsState | null> => ipcRenderer.invoke("settings:choose-save-dir"),
 	openSaveDir: (): Promise<void> => ipcRenderer.invoke("settings:open-save-dir"),
+	setLanguage: (language: LanguageSetting): Promise<SettingsState> =>
+		ipcRenderer.invoke("settings:set-language", language),
+	setOpenAtLogin: (enabled: boolean): Promise<ActionResult> =>
+		ipcRenderer.invoke("settings:set-open-at-login", enabled),
 
 	// 自绘标题栏
 	minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),

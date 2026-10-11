@@ -1,6 +1,7 @@
 import type { ActionResult, ScreenshotItem, SettingsState } from "../../electron/ipcTypes";
 import type { ElectronAPI } from "../../electron/preload";
 import { createMockScreenshot } from "./mockImage";
+import { setMockLocale } from "./mockLocale";
 
 /** 主窗口用到的那部分接口。 */
 export type MainApi = Pick<
@@ -20,6 +21,8 @@ export type MainApi = Pick<
 	| "suspendShortcut"
 	| "chooseSaveDir"
 	| "openSaveDir"
+	| "setLanguage"
+	| "setOpenAtLogin"
 	| "minimizeWindow"
 	| "closeWindow"
 >;
@@ -39,6 +42,10 @@ let settings: SettingsState = {
 	captureShortcut: "Alt+C",
 	saveDir: "C:\\Users\\Admin\\Pictures\\NewPath",
 	shortcutRegistered: true,
+	language: "system",
+	locale: "zh-CN",
+	openAtLogin: false,
+	openAtLoginSupported: true,
 };
 
 const listeners = new Set<() => void>();
@@ -83,6 +90,16 @@ export const mockMainApi: MainApi = {
 		return { ...settings };
 	},
 	openSaveDir: async () => log("openSaveDir"),
+	setLanguage: async (language) => {
+		const locale = language === "system" ? "zh-CN" : language;
+		settings = { ...settings, language, locale };
+		setMockLocale(locale);
+		return { ...settings };
+	},
+	setOpenAtLogin: async (enabled) => {
+		settings = { ...settings, openAtLogin: enabled };
+		return ok;
+	},
 	minimizeWindow: async () => log("minimizeWindow"),
 	closeWindow: async () => log("closeWindow"),
 };

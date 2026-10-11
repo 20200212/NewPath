@@ -8,10 +8,13 @@ export interface KeyInput {
 	metaKey: boolean;
 }
 
+/** 无效的原因：unsupported 不支持这个按键；needs-modifier 缺少 Ctrl / Alt / Win。文案由界面按码映射。 */
+export type AcceleratorError = "unsupported" | "needs-modifier";
+
 export type AcceleratorResult =
 	| { status: "pending"; modifiers: string[] }
 	| { status: "ok"; accelerator: string }
-	| { status: "invalid"; reason: string };
+	| { status: "invalid"; reason: AcceleratorError };
 
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"]);
 
@@ -71,11 +74,11 @@ export function acceleratorFromKey(input: KeyInput, mac = false): AcceleratorRes
 	if (MODIFIER_KEYS.has(input.key)) return { status: "pending", modifiers };
 
 	const key = keyName(input.code);
-	if (!key) return { status: "invalid", reason: "不支持这个按键" };
+	if (!key) return { status: "invalid", reason: "unsupported" };
 	// 只按 Shift 加字母会占用大写输入，至少要有 Ctrl / Alt / Win
 	const hasMainModifier = input.ctrlKey || input.altKey || input.metaKey;
 	if (!hasMainModifier && !STANDALONE.test(key)) {
-		return { status: "invalid", reason: "需要搭配 Ctrl、Alt 或 Win 键" };
+		return { status: "invalid", reason: "needs-modifier" };
 	}
 	return { status: "ok", accelerator: [...modifiers, key].join("+") };
 }

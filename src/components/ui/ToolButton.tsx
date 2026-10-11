@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useI18n } from "@/i18n";
 
 interface ToolButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
 	icon: LucideIcon;
@@ -11,10 +12,11 @@ interface ToolButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 
 
 /** 紧凑的图标按钮，用于编辑器工具栏；选中时是蓝色实体按键。 */
 export function ToolButton({ icon: Icon, label, shortcut, active = false, className = "", type = "button", ...props }: ToolButtonProps) {
+	const { t } = useI18n();
 	return (
 		<button
 			type={type}
-			title={shortcut ? `${label}（${shortcut}）` : label}
+			title={shortcut ? t.common.withShortcut(label, shortcut) : label}
 			aria-label={label}
 			aria-pressed={active}
 			className={`no-drag flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-150 active:scale-90 disabled:pointer-events-none disabled:opacity-35 ${

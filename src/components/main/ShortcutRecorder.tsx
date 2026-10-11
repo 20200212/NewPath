@@ -1,6 +1,7 @@
 import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ActionResult } from "../../../electron/ipcTypes";
-import { acceleratorFromKey, formatAccelerator } from "@/lib/accelerator";
+import { useI18n } from "@/i18n";
+import { acceleratorFromKey, formatAccelerator, type AcceleratorError } from "@/lib/accelerator";
 
 interface ShortcutRecorderProps {
 	value: string;
@@ -10,11 +11,15 @@ interface ShortcutRecorderProps {
 	onRecordingChange: (recording: boolean) => void;
 }
 
+/** 错误：本地校验给出错误码，按当前语言显示；主进程返回的原因已是文案。 */
+type RecorderError = { code: AcceleratorError } | { text: string } | null;
+
 /** 点击后直接按下组合键录制；Esc 取消。 */
 export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: ShortcutRecorderProps) {
+	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
 	const [pending, setPending] = useState<string[]>([]);
-	const [error, setError] = useState("");
+	const [error, setError] = useState<RecorderError>(null);
 	const [busy, setBusy] = useState(false);
 
 	const onKeyDown = async (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -31,12 +36,12 @@ export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: Sh
 		const result = acceleratorFromKey(event, mac);
 		if (result.status === "pending") {
 			setPending(result.modifiers);
-			setError("");
+			setError(null);
 			return;
 		}
 		setPending([]);
 		if (result.status === "invalid") {
-			setError(result.reason);
+			setError({ code: result.reason });
 			return;
 		}
 
@@ -45,17 +50,25 @@ export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: Sh
 		const outcome = await onChange(result.accelerator);
 		setBusy(false);
 		if (outcome.ok) {
-			setError("");
+			setError(null);
 			input.blur();
 		} else {
-			setError(outcome.reason);
+			setError({ text: outcome.reason });
 		}
 	};
+
+	const errorText = !error
+		? ""
+		: "text" in error
+			? error.text
+			: error.code === "unsupported"
+				? t.main.recorder.unsupported
+				: t.main.recorder.needsModifier;
 
 	const display = recording
 		? pending.length
 			? `${pending.map(formatAccelerator).join(" + ")} + …`
-			: "请按下组合键…"
+			: t.main.recorder.prompt
 		: formatAccelerator(value);
 
 	return (
@@ -64,15 +77,15 @@ export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: Sh
 				type="text"
 				readOnly
 				value={display}
-				title="点击后按下新的组合键，Esc 取消"
+				title={t.main.recorder.hint}
 				className={`w-44 cursor-pointer rounded-xl border-2 bg-white px-3 py-2 text-center text-sm font-bold shadow-inner transition-all focus:outline-none ${
-					error
+					errorText
 						? "border-apple-red text-apple-red"
 						: "border-gray-200 text-gray-800 focus:border-apple-blue focus:text-apple-blue"
 				}`}
 				onFocus={() => {
 					setRecording(true);
-					setError("");
+					setError(null);
 					onRecordingChange(true);
 				}}
 				onBlur={() => {
@@ -83,7 +96,7 @@ export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: Sh
 				onKeyDown={(event) => void onKeyDown(event)}
 				onKeyUp={() => setPending([])}
 			/>
-			{error && <span className="text-xs font-bold text-apple-red">{error}</span>}
+			{errorText && <span className="text-xs font-bold text-apple-red">{errorText}</span>}
 		</div>
 	);
 }

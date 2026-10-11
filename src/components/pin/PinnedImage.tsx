@@ -1,5 +1,6 @@
 import { Copy, Download, X, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
+import { useI18n } from "@/i18n";
 import { createMockScreenshot } from "@/lib/mockImage";
 
 const ZOOM_STEP = 1.1;
@@ -11,6 +12,8 @@ const HINT_DURATION_MS = 1200;
 /** 钉图窗口：置顶显示一张截图。拖动移动，滚轮缩放，Ctrl+滚轮调透明度，双击或 Esc 关闭。 */
 export function PinnedImage() {
 	const api = window.electronAPI;
+	const { t } = useI18n();
+	const text = t.capture.pin;
 	const [src, setSrc] = useState<string | null>(null);
 	const [opacity, setOpacity] = useState(1);
 	const [hint, setHint] = useState<string | null>(null);
@@ -43,13 +46,13 @@ export function PinnedImage() {
 
 	const copy = useCallback(async () => {
 		await api?.pinCopy();
-		showHint("已复制");
-	}, [api, showHint]);
+		showHint(text.copied);
+	}, [api, showHint, text]);
 
 	const save = useCallback(async () => {
 		const result = await api?.pinSave();
-		if (result?.saved) showHint("已保存到截图库");
-	}, [api, showHint]);
+		if (result?.saved) showHint(text.saved);
+	}, [api, showHint, text]);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -93,7 +96,7 @@ export function PinnedImage() {
 		if (event.ctrlKey || event.metaKey) {
 			const next = Math.min(1, Math.max(MIN_OPACITY, opacity + (larger ? 0.05 : -0.05)));
 			setOpacity(next);
-			showHint(`透明度 ${Math.round(next * 100)}%`);
+			showHint(text.opacityHint(Math.round(next * 100)));
 			return;
 		}
 		void api?.pinZoom(larger ? ZOOM_STEP : 1 / ZOOM_STEP).then((percent) => {
@@ -114,7 +117,7 @@ export function PinnedImage() {
 			{src && (
 				<img
 					src={src}
-					alt="钉图"
+					alt={text.alt}
 					draggable={false}
 					className="pointer-events-none h-full w-full object-fill"
 					style={{ opacity }}
@@ -138,18 +141,18 @@ export function PinnedImage() {
 					<>
 						<input
 							type="range"
-							title="透明度（Ctrl+滚轮）"
+							title={text.opacityTitle}
 							min={MIN_OPACITY * 100}
 							max={100}
 							value={Math.round(opacity * 100)}
 							className="mx-1 h-1 w-16 cursor-pointer accent-apple-blue"
 							onChange={(event) => setOpacity(Number(event.target.value) / 100)}
 						/>
-						<PinButton icon={Copy} label="复制（Ctrl+C）" onClick={() => void copy()} />
-						<PinButton icon={Download} label="保存到截图库（Ctrl+S）" onClick={() => void save()} />
+						<PinButton icon={Copy} label={text.copyTitle} onClick={() => void copy()} />
+						<PinButton icon={Download} label={text.saveTitle} onClick={() => void save()} />
 					</>
 				)}
-				<PinButton icon={X} label="关闭（Esc / 双击）" danger onClick={close} />
+				<PinButton icon={X} label={text.closeTitle} danger onClick={close} />
 			</div>
 		</div>
 	);

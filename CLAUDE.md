@@ -45,6 +45,9 @@ npm run verify                                # 测试 + 构建（build 里的 t
 - 界面风格：浅色 Apple 风 + 实体按键。颜色和按键阴影用 `tailwind.config.cjs` 里的 `apple-*` 和 `shadow-key-*`；按钮、弹窗、提示条优先复用 `src/components/ui/`，不要在组件里重新拼一套按键样式。选区遮罩保持深色。
 - 渲染进程用 `@/` 别名指向 `src/`；引用 `electron/ipcTypes.ts` 时用相对路径且只能 `import type`。
 - 可单独测试的逻辑写成纯函数（如 `src/lib/selectionGeometry.ts`、`electron/cropRect.ts`），测试文件 `*.test.ts` 放在同目录。Vitest 运行在 `node` 环境，没有 DOM。
-- 格式：Tab 缩进、双引号、分号；行尾 LF（见 `.gitattributes`）。注释和界面文案使用中文。
+- 格式：Tab 缩进、双引号、分号；行尾 LF（见 `.gitattributes`）。注释使用中文。
+- 多语言：界面文案不要写死在组件里。渲染进程用 `useI18n()` 取 `t`，文案放在 `src/i18n/messages/` 对应分区（`common` / `main` / `editor` / `capture`），每个分区文件里简中、繁中（台湾用语）、英文三份放在一起，类型以简中为准，缺 key 时类型检查不过；需要插值的写成函数。主进程文案（托盘、对话框、通知、返回给界面的错误原因）放在 `electron/i18n.ts`，用 `mt()` 现取。纯函数不依赖语言：返回错误码或由调用方传入文案。只给开发者看的日志可以保持中文。
+- 语言切换：设置里存 `language`（`system` 或具体语言），主进程用 `resolveLocale` 算出实际语言；新窗口通过 `?lang=` 拿到初始语言，切换时主进程向所有窗口推送 `locale:changed`，渲染进程再调用 `getLocale()` 拉取。
+- 开机自启以系统登录项为准（`app.getLoginItemSettings`），不写进 `settings.json`；Windows 上登录项带 `--hidden` 参数，启动时据此只驻留托盘。开发模式和 Linux 下不支持。
 - 新增窗口类型：在 `main.ts` 的 `WindowType` 联合类型中添加，并在 `App.tsx` 里加对应分支。
 - 许可证：QuickShot 是 GPL-3.0，本项目只参考其选型，不要从中复制代码。

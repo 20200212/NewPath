@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { describeKinds, regionsToRedactions } from "./smartRedact";
 import type { Annotation } from "./types";
+import type { SensitiveKind } from "../../electron/ipcTypes";
 
 let seq = 0;
 const makeId = () => `id${++seq}`;
+
+const LABELS: Record<SensitiveKind, string> = {
+	username: "用户名",
+	hostname: "主机名",
+	email: "邮箱",
+	ip: "IP 地址",
+	mac: "MAC 地址",
+	secret: "密钥",
+	phone: "手机号",
+	"id-card": "身份证号",
+};
 
 describe("smartRedact", () => {
 	it("生成打码标注，强度至少是高度的 0.3 倍", () => {
@@ -32,12 +44,12 @@ describe("smartRedact", () => {
 	});
 
 	it("提示里列出去重后的类型", () => {
-		expect(
-			describeKinds([
-				{ x: 0, y: 0, width: 1, height: 1, kind: "email" },
-				{ x: 0, y: 0, width: 1, height: 1, kind: "ip" },
-				{ x: 0, y: 0, width: 1, height: 1, kind: "email" },
-			]),
-		).toBe("邮箱、IP 地址");
+		const regions = [
+			{ x: 0, y: 0, width: 1, height: 1, kind: "email" as const },
+			{ x: 0, y: 0, width: 1, height: 1, kind: "ip" as const },
+			{ x: 0, y: 0, width: 1, height: 1, kind: "email" as const },
+		];
+		expect(describeKinds(regions, LABELS, "、")).toBe("邮箱、IP 地址");
+		expect(describeKinds(regions, { ...LABELS, email: "email", ip: "IP address" }, ", ")).toBe("email, IP address");
 	});
 });

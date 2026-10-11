@@ -30,6 +30,7 @@ import type {
 	CaptureSessionInfo,
 	CaptureWindowsInfo,
 	DetectedWindow,
+	Locale,
 	OcrResult,
 	PinImageInfo,
 	Point,
@@ -38,7 +39,9 @@ import type {
 	SensitiveResult,
 	SettingsState,
 } from "./ipcTypes";
+import { mt, setMainLocale } from "./i18n";
 import { listScreenshots, resolveInDir, saveToLibrary, validateFileName, watchDir } from "./library";
+import { isLanguageSetting, resolveLocale } from "./locale";
 import { PinManager } from "./pins";
 import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
 import { findSensitiveRegions, type Identity } from "./sensitiveText";
@@ -56,6 +59,11 @@ process.env.APP_ROOT = APP_ROOT;
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : RENDERER_DIST;
 
 const APP_ID = "com.newpath.screenshot";
+
+/** Windows 开机自启时带上这个参数，启动后只驻留托盘、不弹主界面。 */
+const HIDDEN_ARG = "--hidden";
+/** 开发模式下注册的会是裸的 electron.exe；Linux 上 Electron 不支持登录项。 */
+const OPEN_AT_LOGIN_SUPPORTED = app.isPackaged && process.platform !== "linux";
 
 type WindowType = "main" | "screenshot-region" | "screenshot-preview" | "screenshot-pin";
 
@@ -104,6 +112,7 @@ const pins = new PinManager((options) => createWindow("screenshot-pin", options)
 
 let settingsFile = "";
 let settings: AppSettings;
+let locale: Locale = "zh-CN";
 let shortcutRegistered = false;
 /** 设置里正在录制快捷键时暂停全局快捷键，否则按下当前快捷键会直接开始截图。 */
 let shortcutSuspended = false;
@@ -129,17 +138,20 @@ function createWindow(windowType: WindowType, options: Electron.BrowserWindowCon
 	win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 	win.webContents.on("will-navigate", (event) => event.preventDefault());
 
+	// lang 让页面首帧就用对的语言；之后切换语言靠 locale:changed 通知
 	if (VITE_DEV_SERVER_URL) {
 		const url = new URL(VITE_DEV_SERVER_URL);
 		url.searchParams.set("windowType", windowType);
+		url.searchParams.set("lang", locale);
 		void win.loadURL(url.toString());
 	} else {
-		void win.loadFile(path.join(RENDERER_DIST, "index.html"), { query: { windowType } });
+		void win.loadFile(path.join(RENDERER_DIST, "index.html"), { query: { windowType, lang: locale } });
 	}
 	return win;
 }
 
-function getMainWindow() {
+/** showWhenReady 为 false 时只创建、加载好，不显示（开机自启时用）。 */
+function getMainWindow(showWhenReady = true) {
 	if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
 
 	const win = createWindow("main", {
@@ -152,7 +164,7 @@ function getMainWindow() {
 		title: "NewPath",
 		backgroundColor: "#F2F2F7",
 	});
-	win.once("ready-to-show", () => win.show());
+	if (showWhenReady) win.once("ready-to-show", () => win.show());
 	// 关闭按钮只是隐藏到托盘，应用继续驻留
 	win.on("close", (event) => {
 		if (isQuitting) return;
@@ -168,7 +180,11 @@ function getMainWindow() {
 
 function showMainWindow() {
 	const win = getMainWindow();
-	if (win.webContents.isLoading()) return; // ready-to-show 时会自动显示
+	if (win.webContents.isLoading()) {
+		// 正常启动时 ready-to-show 会自动显示；开机自启时没有注册，这里补上（重复 show 无害）
+		win.once("ready-to-show", () => win.show());
+		return;
+	}
 	if (win.isMinimized()) win.restore();
 	win.show();
 	win.focus();
@@ -224,7 +240,7 @@ function openPreviewWindow(image: NativeImage) {
 		minWidth: Math.min(900, workArea.width),
 		minHeight: Math.min(560, workArea.height),
 		frame: false,
-		title: "NewPath 编辑",
+		title: mt().previewWindowTitle,
 		backgroundColor: "#F2F2F7",
 	});
 	win.once("ready-to-show", () => win.show());
@@ -263,10 +279,8 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 		if (!image) {
 			restoreMainWindow();
 			dialog.showErrorBox(
-				"无法截图",
-				process.platform === "darwin"
-					? "请在“系统设置 → 隐私与安全性 → 屏幕录制”中允许 NewPath，然后重启应用。"
-					: "未能获取屏幕画面，请重试。",
+				mt().captureFailedTitle,
+				process.platform === "darwin" ? mt().captureFailedMacPermission : mt().captureFailedRetry,
 			);
 			return;
 		}
@@ -363,7 +377,7 @@ function closeCaptureSession() {
 async function savePngAs(png: Buffer): Promise<SaveResult> {
 	const { canceled, filePath } = await dialog.showSaveDialog({
 		defaultPath: path.join(settings.saveDir, defaultScreenshotName()),
-		filters: [{ name: "PNG 图片", extensions: ["png"] }],
+		filters: [{ name: mt().pngFilterName, extensions: ["png"] }],
 	});
 	if (canceled || !filePath) return { saved: false };
 	const target = ensurePngExtension(filePath);
@@ -377,13 +391,13 @@ async function savePngToLibrary(png: Buffer): Promise<SaveResult> {
 		const filePath = await saveToLibrary(settings.saveDir, defaultScreenshotName(), png);
 		return { saved: true, filePath };
 	} catch (error) {
-		dialog.showErrorBox("保存失败", `无法写入 ${settings.saveDir}\n${String(error)}`);
+		dialog.showErrorBox(mt().saveFailedTitle, mt().saveFailedMessage(settings.saveDir, String(error)));
 		return { saved: false };
 	}
 }
 
 /** 截图窗口里直接保存时没有界面可以反馈，用系统通知告诉用户存到了哪里。 */
-function notifySaved(filePath: string, title = "截图已保存") {
+function notifySaved(filePath: string, title = mt().notifySaved) {
 	if (!Notification.isSupported()) return;
 	const notification = new Notification({ title, body: path.basename(filePath), silent: true });
 	notification.on("click", () => shell.showItemInFolder(filePath));
@@ -392,8 +406,41 @@ function notifySaved(filePath: string, title = "截图已保存") {
 
 // ---------------------------------------------------------------- 设置与快捷键
 
+/** Windows 上登录项按“路径 + 参数”区分，读写都要带上同样的参数。 */
+function loginItemOptions() {
+	return process.platform === "win32" ? { args: [HIDDEN_ARG] } : {};
+}
+
 function getSettingsState(): SettingsState {
-	return { ...settings, shortcutRegistered };
+	return {
+		...settings,
+		shortcutRegistered,
+		locale,
+		openAtLogin: OPEN_AT_LOGIN_SUPPORTED && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+		openAtLoginSupported: OPEN_AT_LOGIN_SUPPORTED,
+	};
+}
+
+/** 这次是不是开机自启拉起来的。 */
+function launchedAtLogin() {
+	if (process.argv.includes(HIDDEN_ARG)) return true;
+	return process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAtLogin;
+}
+
+function setOpenAtLogin(enabled: boolean): ActionResult {
+	if (!OPEN_AT_LOGIN_SUPPORTED) return { ok: false, reason: mt().openAtLoginUnsupported };
+	app.setLoginItemSettings({ ...loginItemOptions(), openAtLogin: enabled });
+	return { ok: true };
+}
+
+/** 按设置和系统语言算出界面语言，同步到托盘和所有窗口。 */
+function applyLocale() {
+	const systemTag = app.getPreferredSystemLanguages()[0] ?? app.getLocale();
+	locale = resolveLocale(settings.language, systemTag);
+	setMainLocale(locale);
+	tray?.setToolTip(mt().trayTooltip);
+	refreshTrayMenu();
+	for (const win of BrowserWindow.getAllWindows()) win.webContents.send("locale:changed");
 }
 
 async function persistSettings() {
@@ -430,7 +477,7 @@ async function changeShortcut(accelerator: string): Promise<ActionResult> {
 	globalShortcut.unregisterAll();
 	if (!available) {
 		syncShortcut();
-		return { ok: false, reason: `${accelerator} 无法使用，可能已被其他程序占用` };
+		return { ok: false, reason: mt().shortcutUnavailable(accelerator) };
 	}
 	settings = { ...settings, captureShortcut: accelerator };
 	shortcutRegistered = true;
@@ -446,7 +493,7 @@ function startWatching() {
 
 async function chooseSaveDir(): Promise<SettingsState | null> {
 	const options: Electron.OpenDialogOptions = {
-		title: "选择截图保存位置",
+		title: mt().chooseSaveDirTitle,
 		defaultPath: settings.saveDir,
 		properties: ["openDirectory", "createDirectory"],
 	};
@@ -508,23 +555,23 @@ function localIdentity(): Identity {
 }
 
 function recognizeText(png: Buffer): Promise<OcrResult> {
-	if (process.platform !== "win32") return Promise.resolve({ ok: false, reason: "当前系统暂不支持文字识别" });
+	if (process.platform !== "win32") return Promise.resolve({ ok: false, reason: mt().ocrUnsupported });
 	return recognizeWithWindowsOcr(png);
 }
 
 /** 截图库文件操作的统一入口：校验文件名，把异常转成给用户看的提示。 */
 async function withLibraryFile(name: unknown, action: (filePath: string) => unknown): Promise<ActionResult> {
 	const filePath = resolveInDir(settings.saveDir, name);
-	if (!filePath) return { ok: false, reason: "文件名无效" };
+	if (!filePath) return { ok: false, reason: mt().invalidFileName };
 	try {
 		await fs.access(filePath);
 		await action(filePath);
 		return { ok: true };
 	} catch (error) {
-		// 带 code 的是系统错误（英文提示），换成简短的中文；其余是上面主动抛出的提示，原样返回
+		// 带 code 的是系统错误（英文提示），换成简短的本地化提示；其余是上面主动抛出的提示，原样返回
 		const code = (error as NodeJS.ErrnoException).code;
-		if (code === "ENOENT") return { ok: false, reason: "文件已不存在" };
-		return { ok: false, reason: code ? `操作失败（${code}）` : (error as Error).message };
+		if (code === "ENOENT") return { ok: false, reason: mt().fileNotFound };
+		return { ok: false, reason: code ? mt().operationFailed(code) : (error as Error).message };
 	}
 }
 
@@ -595,7 +642,7 @@ function registerIpc() {
 				const result = await savePngToLibrary(image.toPNG());
 				if (!result.saved) break;
 				clipboard.writeText(result.filePath);
-				notifySaved(result.filePath, "截图已保存，路径已复制");
+				notifySaved(result.filePath, mt().notifySavedPathCopied);
 				break;
 			}
 			case "edit":
@@ -647,13 +694,13 @@ function registerIpc() {
 
 	ipcMain.handle("ocr:recognize", async (event, data: unknown): Promise<OcrResult> => {
 		const png = toPngBuffer(data);
-		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: "图片数据无效" };
+		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: mt().invalidImageData };
 		return recognizeText(png);
 	});
 
 	ipcMain.handle("ocr:find-sensitive", async (event, data: unknown): Promise<SensitiveResult> => {
 		const png = toPngBuffer(data);
-		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: "图片数据无效" };
+		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: mt().invalidImageData };
 		const result = await recognizeText(png);
 		if (!result.ok) return result;
 		const size = nativeImage.createFromBuffer(png).getSize();
@@ -736,7 +783,7 @@ function registerIpc() {
 	handleMain("library:copy-image", (name) =>
 		withLibraryFile(name, (filePath) => {
 			const image = nativeImage.createFromPath(filePath);
-			if (image.isEmpty()) throw new Error("无法读取图片");
+			if (image.isEmpty()) throw new Error(mt().cannotReadImage);
 			clipboard.writeImage(image);
 		}),
 	);
@@ -748,7 +795,7 @@ function registerIpc() {
 	handleMain("library:edit", (name) =>
 		withLibraryFile(name, (filePath) => {
 			const image = nativeImage.createFromPath(filePath);
-			if (image.isEmpty()) throw new Error("无法读取图片");
+			if (image.isEmpty()) throw new Error(mt().cannotReadImage);
 			openPreviewWindow(image);
 		}),
 	);
@@ -764,7 +811,7 @@ function registerIpc() {
 			// 只改大小写时目标在 Windows 上"已存在"，允许直接改名
 			const sameFile = target.toLowerCase() === filePath.toLowerCase();
 			if (!sameFile && (await fs.access(target).then(() => true, () => false))) {
-				throw new Error(`已存在同名文件 ${checked.name}`);
+				throw new Error(mt().fileNameExists(checked.name));
 			}
 			await fs.rename(filePath, target);
 		}),
@@ -774,7 +821,7 @@ function registerIpc() {
 	handleMain("settings:get", () => getSettingsState());
 
 	handleMain("settings:set-shortcut", async (accelerator): Promise<ActionResult> => {
-		if (typeof accelerator !== "string" || !accelerator) return { ok: false, reason: "快捷键无效" };
+		if (typeof accelerator !== "string" || !accelerator) return { ok: false, reason: mt().invalidShortcut };
 		return changeShortcut(accelerator);
 	});
 
@@ -789,6 +836,23 @@ function registerIpc() {
 		await fs.mkdir(settings.saveDir, { recursive: true });
 		await shell.openPath(settings.saveDir);
 	});
+
+	handleMain("settings:set-language", async (language): Promise<SettingsState> => {
+		if (isLanguageSetting(language) && language !== settings.language) {
+			settings = { ...settings, language };
+			applyLocale();
+			await persistSettings();
+		}
+		return getSettingsState();
+	});
+
+	handleMain("settings:set-open-at-login", (enabled): ActionResult => {
+		if (typeof enabled !== "boolean") return { ok: false, reason: mt().invalidArgument };
+		return setOpenAtLogin(enabled);
+	});
+
+	// 所有窗口：界面语言
+	ipcMain.handle("locale:get", (): Locale => locale);
 
 	// 所有窗口：自绘标题栏的按钮
 	ipcMain.handle("window:minimize", (event) => {
@@ -814,7 +878,7 @@ function createTray() {
 		.createFromPath(path.join(process.env.VITE_PUBLIC, "icon.png"))
 		.resize({ width: 16, height: 16 });
 	tray = new Tray(icon);
-	tray.setToolTip("NewPath 截图");
+	tray.setToolTip(mt().trayTooltip);
 	tray.on("click", () => void startCapture());
 	refreshTrayMenu();
 }
@@ -822,17 +886,18 @@ function createTray() {
 function refreshTrayMenu() {
 	if (!tray || tray.isDestroyed()) return;
 	const usable = shortcutRegistered && !shortcutSuspended;
+	const m = mt();
 	tray.setContextMenu(
 		Menu.buildFromTemplate([
-			{ label: "打开主界面", click: showMainWindow },
+			{ label: m.trayOpenMain, click: showMainWindow },
 			{
-				label: usable ? "截图" : "截图（快捷键不可用）",
+				label: usable ? m.trayCapture : m.trayCaptureNoShortcut,
 				accelerator: usable ? settings.captureShortcut : undefined,
 				click: () => void startCapture(),
 			},
-			{ label: "关闭所有钉图", enabled: pins.count > 0, click: () => pins.closeAll() },
+			{ label: m.trayCloseAllPins, enabled: pins.count > 0, click: () => pins.closeAll() },
 			{ type: "separator" },
-			{ label: "退出", role: "quit" },
+			{ label: m.trayQuit, role: "quit" },
 		]),
 	);
 }
@@ -866,7 +931,10 @@ if (!app.requestSingleInstanceLock()) {
 		settings = await loadSettings(settingsFile, {
 			captureShortcut: "Alt+C",
 			saveDir: path.join(app.getPath("pictures"), "NewPath"),
+			language: "system",
 		});
+		// 这时还没有窗口和托盘，只算出语言
+		applyLocale();
 
 		registerIpc();
 		createTray();
@@ -876,6 +944,7 @@ if (!app.requestSingleInstanceLock()) {
 		windowLister.start();
 		// 提前创建并加载好选区窗口，第一次截图也不用等页面加载
 		getRegionWindow();
-		getMainWindow();
+		// 开机自启时只驻留托盘；主窗口照样提前加载，之后打开不用等
+		getMainWindow(!launchedAtLogin());
 	});
 }
