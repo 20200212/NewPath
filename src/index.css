@@ -20,3 +20,33 @@ body {
 		sans-serif;
 	-webkit-font-smoothing: antialiased;
 }
+
+/* 细滚动条，悬停时加深 */
+::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+	border: 3px solid transparent;
+	border-radius: 9999px;
+	background-clip: content-box;
+	background-color: rgb(0 0 0 / 0.15);
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background-color: rgb(0 0 0 / 0.3);
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* 无边框窗口的拖拽区域；区域内可点击的元素要加 no-drag */
+.drag {
+	-webkit-app-region: drag;
+}
+
+.no-drag {
+	-webkit-app-region: no-drag;
+}

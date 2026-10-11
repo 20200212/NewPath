@@ -26,3 +26,24 @@ export interface CaptureFinishPayload {
 }
 
 export type SaveResult = { saved: true; filePath: string } | { saved: false };
+
+/** 截图库里的一项。只传文件名，主进程负责拼出完整路径并校验。 */
+export interface ScreenshotItem {
+	name: string;
+	size: number;
+	mtimeMs: number;
+}
+
+export interface AppSettings {
+	/** Electron 加速键格式，例如 Alt+C。 */
+	captureShortcut: string;
+	/** 截图库目录，截图的"保存"直接写到这里。 */
+	saveDir: string;
+}
+
+export type ActionResult = { ok: true } | { ok: false; reason: string };
+
+export interface SettingsState extends AppSettings {
+	/** 全局快捷键是否注册成功（可能被其他程序占用）。 */
+	shortcutRegistered: boolean;
+}

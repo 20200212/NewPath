@@ -1,3 +1,4 @@
+import { Copy, Download, Pencil, X, type LucideIcon } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -43,7 +44,7 @@ function handlePosition(handle: Handle): CSSProperties {
 	return { left: x, top: y, cursor: HANDLE_CURSORS[handle] };
 }
 
-const TOOLBAR_HEIGHT = 40;
+const TOOLBAR_HEIGHT = 44;
 
 interface LoadedSession {
 	id: number;
@@ -226,7 +227,7 @@ export function RegionSelector() {
 
 			{selection ? (
 				<div
-					className="absolute cursor-move border border-sky-400"
+					className="absolute cursor-move border-2 border-apple-blue"
 					style={{
 						left: selection.x,
 						top: selection.y,
@@ -239,17 +240,17 @@ export function RegionSelector() {
 						<span
 							key={handle}
 							data-handle={handle}
-							className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-sky-500"
+							className="absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-apple-blue bg-white shadow"
 							style={handlePosition(handle)}
 						/>
 					))}
-					<div className="pointer-events-none absolute -top-7 left-0 whitespace-nowrap rounded bg-black/70 px-2 py-0.5 text-xs text-white">
+					<div className="pointer-events-none absolute -top-8 left-0 whitespace-nowrap rounded-lg bg-[#1C1C1E]/85 px-2 py-1 font-mono text-xs font-bold text-white backdrop-blur-md">
 						{Math.round(selection.width * scale)} × {Math.round(selection.height * scale)}
 					</div>
 				</div>
 			) : (
 				<div className="pointer-events-none absolute inset-0 bg-black/45">
-					<p className="absolute left-1/2 top-8 -translate-x-1/2 rounded-full bg-black/70 px-4 py-1.5 text-sm text-white">
+					<p className="absolute left-1/2 top-8 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#1C1C1E]/85 px-5 py-2.5 text-sm font-bold tracking-wide text-white shadow-2xl backdrop-blur-md">
 						拖动选择区域，单击截取全屏 · Esc 退出
 					</p>
 				</div>
@@ -257,7 +258,7 @@ export function RegionSelector() {
 
 			{selection && !dragging && (
 				<div
-					className="absolute flex gap-1 rounded-lg bg-zinc-900/95 p-1 text-sm text-white shadow-lg"
+					className="absolute flex items-center gap-1 rounded-2xl border border-white bg-white/95 p-1.5 shadow-2xl backdrop-blur-xl"
 					style={{
 						right: Math.max(4, bounds.width - selection.x - selection.width),
 						top: toolbarBelow
@@ -268,24 +269,37 @@ export function RegionSelector() {
 					onPointerDown={(event) => event.stopPropagation()}
 					onDoubleClick={(event) => event.stopPropagation()}
 				>
-					<ToolbarButton label="编辑" onClick={() => finish("edit")} />
-					<ToolbarButton label="保存" hint="Ctrl+S" onClick={() => finish("save")} />
-					<ToolbarButton label="复制" hint="Enter" onClick={() => finish("copy")} />
-					<ToolbarButton label="取消" hint="Esc" onClick={cancel} />
+					<ToolbarButton icon={Pencil} label="编辑" onClick={() => finish("edit")} />
+					<ToolbarButton icon={Download} label="保存" hint="Ctrl+S" onClick={() => finish("save")} />
+					<ToolbarButton icon={X} label="取消" hint="Esc" onClick={cancel} />
+					<ToolbarButton icon={Copy} label="复制" hint="Enter" primary onClick={() => finish("copy")} />
 				</div>
 			)}
 		</div>
 	);
 }
 
-function ToolbarButton({ label, hint, onClick }: { label: string; hint?: string; onClick: () => void }) {
+interface ToolbarButtonProps {
+	icon: LucideIcon;
+	label: string;
+	hint?: string;
+	primary?: boolean;
+	onClick: () => void;
+}
+
+function ToolbarButton({ icon: Icon, label, hint, primary, onClick }: ToolbarButtonProps) {
 	return (
 		<button
 			type="button"
 			title={hint ? `${label} (${hint})` : label}
-			className="rounded-md px-3 hover:bg-white/15"
+			className={`flex h-full items-center gap-1.5 rounded-xl px-3 text-sm font-bold transition-all duration-200 active:scale-95 ${
+				primary
+					? "bg-apple-blue text-white shadow-key-blue-sm hover:bg-apple-blue-hover active:translate-y-0.5 active:shadow-none"
+					: "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+			}`}
 			onClick={onClick}
 		>
+			<Icon size={16} strokeWidth={2.5} />
 			{label}
 		</button>
 	);

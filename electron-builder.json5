@@ -29,7 +29,7 @@
 		icon: "public/icon.png",
 		hardenedRuntime: true,
 		extendInfo: {
-			// 托盘应用，不显示 Dock 图标
+			// 托盘应用，不显示 Docs 图标
 			LSUIElement: true,
 			NSScreenCaptureUsageDescription: "NewPath 需要屏幕录制权限来截取屏幕内容。",
 		},
