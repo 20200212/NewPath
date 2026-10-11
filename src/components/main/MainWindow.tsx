@@ -1,5 +1,5 @@
-import { Camera, FolderOpen, FolderTree, Images, Settings } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Camera, FolderOpen, FolderTree, Images, Settings } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LanguageSetting, ScreenshotItem, SettingsState } from "../../../electron/ipcTypes";
 import { Button } from "@/components/ui/Button";
 import { Toast, useToast } from "@/components/ui/Toast";
@@ -7,6 +7,7 @@ import { WindowControls } from "@/components/ui/WindowControls";
 import { useI18n } from "@/i18n";
 import { formatAccelerator } from "@/lib/accelerator";
 import { mockMainApi } from "@/lib/mockLibrary";
+import { DEFAULT_SORT, sortScreenshots, toggleSort, type SortKey, type SortState } from "@/lib/sortScreenshots";
 import { ROW_GRID, ScreenshotRow, type RowAction } from "./ScreenshotRow";
 import { SettingsModal } from "./SettingsModal";
 
@@ -18,6 +19,8 @@ export function MainWindow() {
 	const [items, setItems] = useState<ScreenshotItem[] | null>(null);
 	const [settings, setSettings] = useState<SettingsState | null>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+	const sortedItems = useMemo(() => (items ? sortScreenshots(items, sort) : null), [items, sort]);
 	const { toast, showToast } = useToast();
 
 	const refresh = useCallback(async () => setItems(await api.listScreenshots()), [api]);
@@ -143,8 +146,8 @@ export function MainWindow() {
 						{t.main.list.name}
 						{items && items.length > 0 && <span className="ml-2 text-gray-300">{items.length}</span>}
 					</div>
-					<div>{t.main.list.modified}</div>
-					<div>{t.main.list.size}</div>
+					<SortHeader label={t.main.list.modified} sortKey="mtime" sort={sort} onSort={setSort} />
+					<SortHeader label={t.main.list.size} sortKey="size" sort={sort} onSort={setSort} />
 					<div className="pr-10 text-right">{t.main.list.actions}</div>
 				</div>
 
@@ -160,7 +163,7 @@ export function MainWindow() {
 					</div>
 				) : (
 					<div className="space-y-3">
-						{items?.map((item) => (
+						{sortedItems?.map((item) => (
 							<ScreenshotRow
 								key={item.name}
 								item={item}
@@ -186,5 +189,44 @@ export function MainWindow() {
 			)}
 			<Toast toast={toast} />
 		</div>
+	);
+}
+
+const SORT_ORDER_LABEL = {
+	mtime: { desc: "newest", asc: "oldest" },
+	size: { desc: "largest", asc: "smallest" },
+} as const;
+
+/** 可点击排序的列头：再次点击切换升降序，当前排序列显示箭头。 */
+function SortHeader({
+	label,
+	sortKey,
+	sort,
+	onSort,
+}: {
+	label: string;
+	sortKey: SortKey;
+	sort: SortState;
+	onSort: (next: SortState) => void;
+}) {
+	const { t } = useI18n();
+	const active = sort.key === sortKey;
+	const next = toggleSort(sort, sortKey);
+	const Arrow = sort.dir === "desc" ? ArrowDown : ArrowUp;
+
+	return (
+		<button
+			type="button"
+			title={t.main.list.sortClickTo(t.main.list.sortOrder[SORT_ORDER_LABEL[next.key][next.dir]])}
+			className={`no-drag group flex items-center gap-1 justify-self-start font-black uppercase tracking-widest transition-colors hover:text-apple-blue ${active ? "text-gray-600" : ""}`}
+			onClick={() => onSort(next)}
+		>
+			{label}
+			{active ? (
+				<Arrow size={13} strokeWidth={3} />
+			) : (
+				<ArrowDown size={13} strokeWidth={3} className="opacity-0 transition-opacity group-hover:opacity-50" />
+			)}
+		</button>
 	);
 }
