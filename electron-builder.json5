@@ -27,9 +27,17 @@
 		target: ["dmg"],
 		category: "public.app-category.utilities",
 		icon: "public/icon.png",
+		// 与 Electron 39 和 native/ 里 Swift 工具的最低版本一致
+		minimumSystemVersion: "12.0",
+		// macOS 的语言包目录用下划线
+		electronLanguages: ["en", "zh_CN", "zh_TW"],
 		hardenedRuntime: true,
+		// 选签名身份、没有证书时退回 ad-hoc，见脚本里的说明和 Docs/macOS.md
+		sign: "./scripts/mac-sign.mjs",
+		// 窗口识别和文字识别用的 Swift 小工具，由 scripts/build-native.mjs 编译到 build/native/
+		extraResources: [{ from: "build/native", to: "native", filter: ["newpath-*"] }],
 		extendInfo: {
-			// 托盘应用，不显示 Docs 图标
+			// 托盘应用，不显示 Dock 图标
 			LSUIElement: true,
 			NSScreenCaptureUsageDescription: "NewPath 需要屏幕录制权限来截取屏幕内容。",
 		},

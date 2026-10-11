@@ -2,6 +2,7 @@ import { Copy, Download, X, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent } from "react";
 import { useI18n } from "@/i18n";
 import { createMockScreenshot } from "@/lib/mockImage";
+import { appShortcut, MOD_KEY } from "@/lib/platform";
 
 const ZOOM_STEP = 1.1;
 const MIN_OPACITY = 0.2;
@@ -141,15 +142,15 @@ export function PinnedImage() {
 					<>
 						<input
 							type="range"
-							title={text.opacityTitle}
+							title={text.opacityTitle(MOD_KEY)}
 							min={MIN_OPACITY * 100}
 							max={100}
 							value={Math.round(opacity * 100)}
 							className="mx-1 h-1 w-16 cursor-pointer accent-apple-blue"
 							onChange={(event) => setOpacity(Number(event.target.value) / 100)}
 						/>
-						<PinButton icon={Copy} label={text.copyTitle} onClick={() => void copy()} />
-						<PinButton icon={Download} label={text.saveTitle} onClick={() => void save()} />
+						<PinButton icon={Copy} label={text.copyTitle(appShortcut("Ctrl+C"))} onClick={() => void copy()} />
+						<PinButton icon={Download} label={text.saveTitle(appShortcut("Ctrl+S"))} onClick={() => void save()} />
 					</>
 				)}
 				<PinButton icon={X} label={text.closeTitle} danger onClick={close} />

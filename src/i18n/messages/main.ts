@@ -52,6 +52,7 @@ const zhCN = {
 		hint: "点击后按下新的组合键，Esc 取消",
 		unsupported: "不支持这个按键",
 		needsModifier: "需要搭配 Ctrl、Alt 或 Win 键",
+		needsModifierMac: "需要搭配 ⌘、⌥ 或 ⌃ 键",
 	},
 };
 
@@ -108,6 +109,7 @@ export const main: Record<Locale, typeof zhCN> = {
 			hint: "點擊後按下新的組合鍵，Esc 取消",
 			unsupported: "不支援這個按鍵",
 			needsModifier: "需要搭配 Ctrl、Alt 或 Win 鍵",
+			needsModifierMac: "需要搭配 ⌘、⌥ 或 ⌃ 鍵",
 		},
 	},
 	en: {
@@ -161,6 +163,7 @@ export const main: Record<Locale, typeof zhCN> = {
 			hint: "Click, then press a new shortcut. Esc to cancel.",
 			unsupported: "This key isn't supported",
 			needsModifier: "Add Ctrl, Alt, or Win",
+			needsModifierMac: "Add ⌘, ⌥, or ⌃",
 		},
 	},
 };

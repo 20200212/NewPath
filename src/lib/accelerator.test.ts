@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceleratorFromKey, formatAccelerator, type KeyInput } from "./accelerator";
+import { acceleratorFromKey, formatAccelerator, formatAppShortcut, type KeyInput } from "./accelerator";
 
 const press = (key: string, code: string, mods: Partial<KeyInput> = {}): KeyInput => ({
 	key,
@@ -63,5 +63,32 @@ describe("formatAccelerator", () => {
 	it("用空格分隔并替换显示名", () => {
 		expect(formatAccelerator("Ctrl+Shift+A")).toBe("Ctrl + Shift + A");
 		expect(formatAccelerator("Alt+Super+1")).toBe("Alt + Win + 1");
+	});
+
+	it("macOS 上显示成符号，修饰键按 ⌃⌥⇧⌘ 排序", () => {
+		expect(formatAccelerator("Command+Shift+X", true)).toBe("⇧⌘X");
+		expect(formatAccelerator("Shift+Alt+Ctrl+A", true)).toBe("⌃⌥⇧A");
+		expect(formatAccelerator("Ctrl+Up", true)).toBe("⌃↑");
+		expect(formatAccelerator("F1", true)).toBe("F1");
+	});
+
+	it("按键本身是 + 时不被拆掉", () => {
+		expect(formatAccelerator("Ctrl++")).toBe("Ctrl + +");
+		expect(formatAccelerator("Command++", true)).toBe("⌘+");
+	});
+});
+
+describe("formatAppShortcut", () => {
+	it("Windows 上原样显示", () => {
+		expect(formatAppShortcut("Ctrl+Shift+S", false)).toBe("Ctrl+Shift+S");
+		expect(formatAppShortcut("Delete", false)).toBe("Delete");
+	});
+
+	it("macOS 上 Ctrl 显示成 ⌘，Delete 显示成 ⌫", () => {
+		expect(formatAppShortcut("Ctrl+Shift+S", true)).toBe("⇧⌘S");
+		expect(formatAppShortcut("Ctrl+-", true)).toBe("⌘-");
+		expect(formatAppShortcut("Ctrl+=", true)).toBe("⌘=");
+		expect(formatAppShortcut("Delete", true)).toBe("⌫");
+		expect(formatAppShortcut("C", true)).toBe("C");
 	});
 });

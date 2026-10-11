@@ -6,6 +6,7 @@ import { Toast, useToast } from "@/components/ui/Toast";
 import { WindowControls } from "@/components/ui/WindowControls";
 import { useI18n } from "@/i18n";
 import { formatAccelerator } from "@/lib/accelerator";
+import { isMac } from "@/lib/platform";
 import { mockMainApi } from "@/lib/mockLibrary";
 import { DEFAULT_SORT, sortScreenshots, toggleSort, type SortKey, type SortState } from "@/lib/sortScreenshots";
 import { ROW_GRID, ScreenshotRow, type RowAction } from "./ScreenshotRow";
@@ -15,7 +16,6 @@ import { SettingsModal } from "./SettingsModal";
 export function MainWindow() {
 	const api = window.electronAPI ?? mockMainApi;
 	const { t } = useI18n();
-	const mac = window.electronAPI?.platform === "darwin";
 	const [items, setItems] = useState<ScreenshotItem[] | null>(null);
 	const [settings, setSettings] = useState<SettingsState | null>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
@@ -43,7 +43,7 @@ export function MainWindow() {
 		const result = await api.setCaptureShortcut(accelerator);
 		if (result.ok) {
 			setSettings(await api.getSettings());
-			showToast(t.main.toast.shortcutChanged(formatAccelerator(accelerator)));
+			showToast(t.main.toast.shortcutChanged(formatAccelerator(accelerator, isMac)));
 		}
 		return result;
 	};
@@ -94,12 +94,14 @@ export function MainWindow() {
 		return true;
 	};
 
-	const shortcutLabel = settings ? formatAccelerator(settings.captureShortcut) : "";
+	const shortcutLabel = settings ? formatAccelerator(settings.captureShortcut, isMac) : "";
 
 	return (
 		<div className="flex h-screen w-screen select-none flex-col overflow-hidden bg-apple-canvas font-sans selection:bg-apple-blue/20">
-			{/* 顶部工具栏兼标题栏：空白处可以拖动窗口 */}
-			<header className="drag z-10 flex shrink-0 items-center gap-4 border-b border-gray-200/50 bg-white/60 px-6 py-5 backdrop-blur-xl">
+			{/* 顶部工具栏兼标题栏：空白处可以拖动窗口；macOS 上左侧留给系统的红绿灯按钮 */}
+			<header
+				className={`drag z-10 flex shrink-0 items-center gap-4 border-b border-gray-200/50 bg-white/60 py-5 backdrop-blur-xl ${isMac ? "pl-[92px] pr-6" : "px-6"}`}
+			>
 				<Button
 					title={shortcutLabel ? t.main.toolbar.startCaptureWithShortcut(shortcutLabel) : t.main.toolbar.startCapture}
 					onClick={() => void api.startCapture()}
@@ -133,8 +135,12 @@ export function MainWindow() {
 					/>
 				</Button>
 
-				<div className="h-8 w-px shrink-0 bg-gray-200" />
-				<WindowControls onMinimize={() => void api.minimizeWindow()} onClose={() => void api.closeWindow()} />
+				{!isMac && (
+					<>
+						<div className="h-8 w-px shrink-0 bg-gray-200" />
+						<WindowControls onMinimize={() => void api.minimizeWindow()} onClose={() => void api.closeWindow()} />
+					</>
+				)}
 			</header>
 
 			<main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6">
@@ -179,7 +185,7 @@ export function MainWindow() {
 			{settingsOpen && settings && (
 				<SettingsModal
 					settings={settings}
-					mac={mac}
+					mac={isMac}
 					onClose={() => setSettingsOpen(false)}
 					onChangeShortcut={changeShortcut}
 					onChangeLanguage={(language) => void changeLanguage(language)}

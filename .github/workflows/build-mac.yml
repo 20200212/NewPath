@@ -1,0 +1,55 @@
+# 在 GitHub 的 macOS 机器上打 Mac 安装包（DMG，Apple 芯片和 Intel 各一个）。
+# 手动运行（Actions → Build macOS → Run workflow）或推送 v* 标签时触发；产物在运行页面的 Artifacts 里下载。
+# 签名和公证都是可选的，对应的 Secrets 没配就打 ad-hoc 签名的包，说明见 Docs/macOS.md。
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Build DMG
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # 变量为空时 electron-builder 会把它当成路径去找证书，没配的就整个去掉
+          if [ -z "$CSC_LINK" ]; then unset CSC_LINK CSC_KEY_PASSWORD; fi
+          if [ -z "$APPLE_ID" ]; then unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; fi
+          npm run build:mac -- --publish never
+
+      - name: Show signature
+        shell: bash
+        run: |
+          for app in release/*/mac*/NewPath.app; do
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E "^(Identifier|Authority|Signature|TeamIdentifier)" || true
+            codesign -d -r- "$app" 2>&1 | tail -1
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NewPath-macOS
+          path: release/*/*.dmg
+          if-no-files-found: error

@@ -14,6 +14,7 @@ import {
 	Notification,
 	screen,
 	shell,
+	systemPreferences,
 	Tray,
 	type Display,
 	type IpcMainInvokeEvent,
@@ -34,6 +35,7 @@ import type {
 	OcrResult,
 	PinImageInfo,
 	Point,
+	Rect,
 	SaveResult,
 	ScreenshotItem,
 	SensitiveResult,
@@ -42,13 +44,14 @@ import type {
 import { mt, setMainLocale } from "./i18n";
 import { listScreenshots, resolveInDir, saveToLibrary, validateFileName, watchDir } from "./library";
 import { isLanguageSetting, resolveLocale } from "./locale";
+import { listMacWindows } from "./macWindowList";
+import { recognizeText } from "./ocr";
 import { PinManager } from "./pins";
 import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
 import { findSensitiveRegions, type Identity } from "./sensitiveText";
 import { loadSettings, saveSettings } from "./settings";
 import { WindowListHelper } from "./windowList";
-import { toDisplayLocalPoint, toDisplayLocalWindows } from "./windowRects";
-import { recognizeWithWindowsOcr } from "./windowsOcr";
+import { toDisplayLocalPoint, toDisplayLocalWindows, type RawWindow } from "./windowRects";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,6 +67,13 @@ const APP_ID = "com.newpath.screenshot";
 const HIDDEN_ARG = "--hidden";
 /** 开发模式下注册的会是裸的 electron.exe；Linux 上 Electron 不支持登录项。 */
 const OPEN_AT_LOGIN_SUPPORTED = app.isPackaged && process.platform !== "linux";
+/** macOS 上 Option+字母会打出特殊字符，按 Mac 的习惯用 ⌘ 组合。 */
+const DEFAULT_CAPTURE_SHORTCUT = process.platform === "darwin" ? "Command+Shift+X" : "Alt+C";
+/** 系统设置里“屏幕录制”那一页。 */
+const SCREEN_RECORDING_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+/** macOS 红绿灯按钮的位置，和渲染进程标题栏里留出的空位对齐（MainWindow 的 header、编辑器的 Toolbar）。 */
+const MAIN_TRAFFIC_LIGHTS = { x: 20, y: 38 };
+const PREVIEW_TRAFFIC_LIGHTS = { x: 18, y: 21 };
 
 type WindowType = "main" | "screenshot-region" | "screenshot-preview" | "screenshot-pin";
 
@@ -117,6 +127,8 @@ let shortcutRegistered = false;
 /** 设置里正在录制快捷键时暂停全局快捷键，否则按下当前快捷键会直接开始截图。 */
 let shortcutSuspended = false;
 let stopWatching: (() => void) | null = null;
+/** 屏幕录制权限的提示框正在显示，连按快捷键时不重复弹出。 */
+let permissionPromptOpen = false;
 
 // ---------------------------------------------------------------- 窗口
 
@@ -150,6 +162,20 @@ function createWindow(windowType: WindowType, options: Electron.BrowserWindowCon
 	return win;
 }
 
+/**
+ * 主窗口和编辑窗口的标题栏：Windows / Linux 上无边框，按钮由渲染进程自绘；
+ * macOS 上保留系统的红绿灯按钮（hiddenInset），渲染进程不再画自己的按钮。
+ */
+function titleBarOptions(trafficLights: Point): Electron.BrowserWindowConstructorOptions {
+	if (process.platform === "darwin") return { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLights };
+	return { frame: false };
+}
+
+/** macOS 上托盘应用（LSUIElement）的窗口显示出来也不会自动拿到焦点，要先激活应用。 */
+function activateApp() {
+	if (process.platform === "darwin") app.focus({ steal: true });
+}
+
 /** showWhenReady 为 false 时只创建、加载好，不显示（开机自启时用）。 */
 function getMainWindow(showWhenReady = true) {
 	if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
@@ -159,8 +185,8 @@ function getMainWindow(showWhenReady = true) {
 		height: 720,
 		minWidth: 880,
 		minHeight: 520,
-		// 无边框，标题栏由渲染进程自绘；不用 transparent，Windows 11 会自动加圆角
-		frame: false,
+		// 标题栏由渲染进程自绘；不用 transparent，Windows 11 会自动加圆角
+		...titleBarOptions(MAIN_TRAFFIC_LIGHTS),
 		title: "NewPath",
 		backgroundColor: "#F2F2F7",
 	});
@@ -186,6 +212,7 @@ function showMainWindow() {
 		return;
 	}
 	if (win.isMinimized()) win.restore();
+	activateApp();
 	win.show();
 	win.focus();
 }
@@ -206,13 +233,16 @@ function getRegionWindow() {
 		fullscreenable: false,
 		skipTaskbar: true,
 		hasShadow: false,
+		// 盖住 macOS 的菜单栏；macOS 上无边框窗口默认带圆角，盖在截图上会露出四个角
 		enableLargerThanScreen: true,
+		...(process.platform === "darwin" ? { roundedCorners: false } : {}),
 		backgroundColor: "#000000",
 		// 隐藏状态下也要能及时处理新会话
 		webPreferences: { backgroundThrottling: false },
 	});
 	win.setAlwaysOnTop(true, "screen-saver");
-	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+	// skipTransformProcessType：否则 macOS 上每次调用都会切换进程类型，Dock 图标会闪一下
+	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 	// Alt+F4 等关闭操作只当作取消，窗口留着下次复用
 	win.on("close", (event) => {
 		if (isQuitting) return;
@@ -239,11 +269,14 @@ function openPreviewWindow(image: NativeImage) {
 		height: Math.min(Math.max(Math.round(height / scaleFactor) + 240, 640), workArea.height),
 		minWidth: Math.min(900, workArea.width),
 		minHeight: Math.min(560, workArea.height),
-		frame: false,
+		...titleBarOptions(PREVIEW_TRAFFIC_LIGHTS),
 		title: mt().previewWindowTitle,
 		backgroundColor: "#F2F2F7",
 	});
-	win.once("ready-to-show", () => win.show());
+	win.once("ready-to-show", () => {
+		activateApp();
+		win.show();
+	});
 	win.on("closed", () => {
 		if (previewWindow === win) {
 			previewWindow = null;
@@ -256,6 +289,7 @@ function openPreviewWindow(image: NativeImage) {
 
 function showWindow(win: BrowserWindow | null) {
 	if (!win || win.isDestroyed()) return;
+	activateApp();
 	win.show();
 	win.focus();
 }
@@ -271,17 +305,28 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 	captureStarting = true;
 	const startedAt = performance.now();
 	try {
+		// macOS 上已经拒绝过屏幕录制权限：截出来只会是桌面壁纸，直接提示去授权
+		const permission = screenPermissionStatus();
+		if (permission === "denied" || permission === "restricted") {
+			restoreMainWindow();
+			void explainScreenPermission();
+			return;
+		}
+
 		const cursor = screen.getCursorScreenPoint();
 		const display = screen.getDisplayNearestPoint(cursor);
 		// 枚举窗口和截屏同时进行，不拖慢选区窗口的显示
-		const windowsPromise = windowLister.list(process.pid);
+		const windowsPromise = listWindows();
 		const image = await captureDisplay(display);
+		if (screenPermissionStatus() !== "granted") {
+			// 第一次截图时系统会自己弹出授权请求，这时不再叠一个提示框
+			restoreMainWindow();
+			if (permission !== "not-determined") void explainScreenPermission();
+			return;
+		}
 		if (!image) {
 			restoreMainWindow();
-			dialog.showErrorBox(
-				mt().captureFailedTitle,
-				process.platform === "darwin" ? mt().captureFailedMacPermission : mt().captureFailedRetry,
-			);
+			dialog.showErrorBox(mt().captureFailedTitle, mt().captureFailedRetry);
 			return;
 		}
 
@@ -300,7 +345,7 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 		captureSession = session;
 		void windowsPromise.then((windows) => {
 			if (captureSession !== session) return;
-			session.windows = toDisplayLocalWindows(windows, display.bounds, (rect) => screen.screenToDipRect(null, rect));
+			session.windows = toDisplayLocalWindows(windows, display.bounds, windowRectToDip);
 			regionWindow?.webContents.send("capture:windows");
 		});
 
@@ -315,6 +360,51 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 		setTimeout(() => revealRegionWindow(session.id), REVEAL_TIMEOUT_MS);
 	} finally {
 		captureStarting = false;
+	}
+}
+
+/** 截图时屏幕上的窗口，按 Z 序从前往后。Windows 上是物理像素，macOS 上已经是点（DIP）。 */
+function listWindows(): Promise<RawWindow[]> {
+	return process.platform === "darwin" ? listMacWindows(process.pid) : windowLister.list(process.pid);
+}
+
+/** screenToDipRect 只在 Windows / Linux 上有；macOS 的窗口坐标本来就是 DIP。 */
+function windowRectToDip(rect: Rect): Rect {
+	return process.platform === "darwin" ? rect : screen.screenToDipRect(null, rect);
+}
+
+/** 屏幕录制权限只有 macOS 需要，其他平台总是 granted。 */
+function screenPermissionStatus() {
+	return process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("screen") : "granted";
+}
+
+/**
+ * 没有屏幕录制权限时 macOS 不报错，只给一张只有桌面壁纸的画面，看起来像是截图坏了。
+ * 提示用户去系统设置里授权；授权后要重启应用才生效，所以同时提供“重新启动”。
+ */
+async function explainScreenPermission() {
+	if (permissionPromptOpen) return;
+	permissionPromptOpen = true;
+	const m = mt();
+	try {
+		activateApp();
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			title: m.screenPermissionTitle,
+			message: m.screenPermissionMessage,
+			detail: m.screenPermissionDetail,
+			buttons: [m.screenPermissionOpenSettings, m.screenPermissionRelaunch, m.screenPermissionLater],
+			defaultId: 0,
+			cancelId: 2,
+		});
+		if (response === 0) {
+			await shell.openExternal(SCREEN_RECORDING_SETTINGS_URL);
+		} else if (response === 1) {
+			app.relaunch();
+			app.quit();
+		}
+	} finally {
+		permissionPromptOpen = false;
 	}
 }
 
@@ -356,6 +446,7 @@ function revealRegionWindow(sessionId: number) {
 	if (VITE_DEV_SERVER_URL) console.log(`[capture] 按下快捷键到显示选区：${Math.round(performance.now() - session.startedAt)}ms`);
 	win.setOpacity(1);
 	win.moveTop();
+	activateApp();
 	win.focus();
 }
 
@@ -424,7 +515,10 @@ function getSettingsState(): SettingsState {
 /** 这次是不是开机自启拉起来的。 */
 function launchedAtLogin() {
 	if (process.argv.includes(HIDDEN_ARG)) return true;
-	return process.platform === "darwin" && app.getLoginItemSettings().wasOpenedAtLogin;
+	if (process.platform !== "darwin") return false;
+	const login = app.getLoginItemSettings();
+	// macOS 13 起登录项由 SMAppService 管理，wasOpenedAtLogin 总是 false；退而求其次：开了自启、且系统刚启动不久
+	return login.wasOpenedAtLogin || (login.openAtLogin && os.uptime() < 120);
 }
 
 function setOpenAtLogin(enabled: boolean): ActionResult {
@@ -552,11 +646,6 @@ function localIdentity(): Identity {
 		hostNames.add(name.split(".")[0]);
 	}
 	return { userNames: [...userNames], hostNames: [...hostNames] };
-}
-
-function recognizeText(png: Buffer): Promise<OcrResult> {
-	if (process.platform !== "win32") return Promise.resolve({ ok: false, reason: mt().ocrUnsupported });
-	return recognizeWithWindowsOcr(png);
 }
 
 /** 截图库文件操作的统一入口：校验文件名，把异常转成给用户看的提示。 */
@@ -874,13 +963,34 @@ function registerIpc() {
 // ---------------------------------------------------------------- 托盘
 
 function createTray() {
-	const icon = nativeImage
-		.createFromPath(path.join(process.env.VITE_PUBLIC, "icon.png"))
-		.resize({ width: 16, height: 16 });
+	let icon: NativeImage;
+	if (process.platform === "darwin") {
+		// 菜单栏用单色模板图（同目录的 @2x 会自动加载），系统按浅色 / 深色菜单栏自动着色
+		icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, "trayTemplate.png"));
+		icon.setTemplateImage(true);
+	} else {
+		icon = nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC, "icon.png")).resize({ width: 16, height: 16 });
+	}
 	tray = new Tray(icon);
 	tray.setToolTip(mt().trayTooltip);
-	tray.on("click", () => void startCapture());
+	// macOS 的惯例是单击菜单栏图标弹出菜单；Windows / Linux 上单击直接截图
+	if (process.platform !== "darwin") tray.on("click", () => void startCapture());
 	refreshTrayMenu();
+}
+
+/**
+ * macOS 上输入框里的 ⌘C / ⌘V / ⌘A、⌘W 关窗口、⌘Q 退出都靠应用菜单。默认菜单里还有“重新加载”和
+ * 页面缩放（⌘0 / ⌘= / ⌘-，会抢走编辑器的缩放快捷键），所以换成精简的菜单；开发时保留开发者工具。
+ */
+function setMacAppMenu() {
+	const template: Electron.MenuItemConstructorOptions[] = [
+		{ role: "appMenu" },
+		{ role: "fileMenu" },
+		{ role: "editMenu" },
+		{ role: "windowMenu" },
+	];
+	if (VITE_DEV_SERVER_URL) template.push({ label: "Developer", submenu: [{ role: "reload" }, { role: "toggleDevTools" }] });
+	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function refreshTrayMenu() {
@@ -907,8 +1017,11 @@ function refreshTrayMenu() {
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
-	// 再次启动应用时打开主界面
+	// 再次启动应用时打开主界面；macOS 上在访达里再次打开已在运行的应用，触发的是 activate
 	app.on("second-instance", () => showMainWindow());
+	app.on("activate", () => {
+		if (app.isReady()) showMainWindow();
+	});
 
 	// 托盘应用：关闭所有窗口后继续驻留
 	app.on("window-all-closed", () => {});
@@ -924,12 +1037,15 @@ if (!app.requestSingleInstanceLock()) {
 	});
 
 	app.whenReady().then(async () => {
-		if (process.platform === "darwin") app.dock?.hide();
+		if (process.platform === "darwin") {
+			app.dock?.hide();
+			setMacAppMenu();
+		}
 		if (process.platform === "win32") app.setAppUserModelId(APP_ID);
 
 		settingsFile = path.join(app.getPath("userData"), "settings.json");
 		settings = await loadSettings(settingsFile, {
-			captureShortcut: "Alt+C",
+			captureShortcut: DEFAULT_CAPTURE_SHORTCUT,
 			saveDir: path.join(app.getPath("pictures"), "NewPath"),
 			language: "system",
 		});

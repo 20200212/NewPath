@@ -3,6 +3,7 @@ import { ChipButton, ToolButton } from "@/components/ui/ToolButton";
 import { PALETTE } from "@/editor/presets";
 import type { AnnotationKind, ShapeFill, SizeLevel, TextSizeLevel, TextStyle, ToolStyle } from "@/editor/types";
 import { useI18n } from "@/i18n";
+import { appShortcut } from "@/lib/platform";
 
 interface StyleBarProps {
 	/** 当前工具，或选中标注的类型。 */
@@ -153,7 +154,7 @@ export function StyleBar({
 			{isRedact && smartRedactAvailable && (
 				<>
 					<Divider />
-					<ChipButton title={text.smartRedactTitle} className="whitespace-nowrap" disabled={smartRedactBusy} onClick={onSmartRedact}>
+					<ChipButton title={text.smartRedactTitle(appShortcut("Ctrl+Shift+M"))} className="whitespace-nowrap" disabled={smartRedactBusy} onClick={onSmartRedact}>
 						{smartRedactBusy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} strokeWidth={2.5} />}
 						{text.smartRedact}
 					</ChipButton>

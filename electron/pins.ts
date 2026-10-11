@@ -66,6 +66,10 @@ export class PinManager {
 			title: mt().pinWindowTitle,
 		});
 		win.setAlwaysOnTop(true, "floating");
+		// macOS 上切换桌面（Space）或进入全屏应用时，钉图也跟着显示
+		if (process.platform === "darwin") {
+			win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+		}
 
 		const record: PinRecord = {
 			win,

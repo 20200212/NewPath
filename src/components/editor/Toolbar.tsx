@@ -26,6 +26,7 @@ import { WindowControls } from "@/components/ui/WindowControls";
 import { TOOL_KEYS } from "@/editor/keymap";
 import type { Tool } from "@/editor/types";
 import { useI18n } from "@/i18n";
+import { appShortcut, isMac } from "@/lib/platform";
 
 const TOOLS: { id: Tool; icon: LucideIcon }[] = [
 	{ id: "select", icon: MousePointer2 },
@@ -67,11 +68,14 @@ export function Toolbar(props: ToolbarProps) {
 	const { tool, cropping } = props;
 	const { t } = useI18n();
 	const text = t.editor.toolbar;
+	// macOS 上用系统的红绿灯按钮（主进程设了 hiddenInset），左侧给它留出位置
 	return (
-		<header className="drag flex h-14 shrink-0 items-center gap-2 border-b border-gray-200/60 bg-white/70 px-3 backdrop-blur-xl">
+		<header
+			className={`drag flex h-14 shrink-0 items-center gap-2 border-b border-gray-200/60 bg-white/70 backdrop-blur-xl ${isMac ? "pl-[84px] pr-3" : "px-3"}`}
+		>
 			<ToolGroup>
 				<ToolButton icon={Undo2} label={text.undo} shortcut="Ctrl+Z" disabled={!props.canUndo} onClick={props.onUndo} />
-				<ToolButton icon={Redo2} label={text.redo} shortcut="Ctrl+Y" disabled={!props.canRedo} onClick={props.onRedo} />
+				<ToolButton icon={Redo2} label={text.redo} shortcut={isMac ? "Ctrl+Shift+Z" : "Ctrl+Y"} disabled={!props.canRedo} onClick={props.onRedo} />
 			</ToolGroup>
 
 			<ToolGroup>
@@ -104,13 +108,17 @@ export function Toolbar(props: ToolbarProps) {
 				<ToolButton icon={Download} label={text.save} shortcut="Ctrl+S" onClick={props.onSave} />
 			</ToolGroup>
 
-			<Button size="sm" title={text.copyTitle} className="whitespace-nowrap" onClick={props.onCopy}>
+			<Button size="sm" title={text.copyTitle(appShortcut("Ctrl+C"))} className="whitespace-nowrap" onClick={props.onCopy}>
 				<Copy size={16} strokeWidth={2.5} />
 				{text.copy}
 			</Button>
 
-			<div className="h-7 w-px shrink-0 bg-gray-200" />
-			<WindowControls onMinimize={props.onMinimize} onMaximize={props.onMaximize} onClose={props.onClose} />
+			{!isMac && (
+				<>
+					<div className="h-7 w-px shrink-0 bg-gray-200" />
+					<WindowControls onMinimize={props.onMinimize} onMaximize={props.onMaximize} onClose={props.onClose} />
+				</>
+			)}
 		</header>
 	);
 }

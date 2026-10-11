@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ChipButton, ToolButton } from "@/components/ui/ToolButton";
 import { formatZoom, MAX_ZOOM, MIN_ZOOM, parseZoomInput } from "@/editor/viewport";
 import { useI18n } from "@/i18n";
+import { appShortcut } from "@/lib/platform";
 
 interface ZoomBarProps {
 	width: number;
@@ -71,10 +72,10 @@ export function ZoomBar(props: ZoomBarProps) {
 				</div>
 				<ToolButton icon={Plus} label={text.zoomIn} shortcut="Ctrl+=" disabled={zoom >= MAX_ZOOM} onClick={props.onZoomIn} />
 				<Divider />
-				<ChipButton title={text.actualSizeTitle} active={Math.abs(zoom - 1) < 0.001} onClick={props.onActualSize}>
+				<ChipButton title={text.actualSizeTitle(appShortcut("Ctrl+0"))} active={Math.abs(zoom - 1) < 0.001} onClick={props.onActualSize}>
 					100%
 				</ChipButton>
-				<ChipButton title={text.fitTitle} className="whitespace-nowrap" active={props.fitting} onClick={props.onFit}>
+				<ChipButton title={text.fitTitle(appShortcut("Ctrl+9"))} className="whitespace-nowrap" active={props.fitting} onClick={props.onFit}>
 					{text.fit}
 				</ChipButton>
 				<Divider />

@@ -1,11 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useI18n } from "@/i18n";
+import { appShortcut } from "@/lib/platform";
 
 interface ToolButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
 	icon: LucideIcon;
 	label: string;
-	/** 显示在提示里的快捷键。 */
+	/** 显示在提示里的快捷键，按 Windows 习惯写（Ctrl+S），macOS 上自动显示成 ⌘S。 */
 	shortcut?: string;
 	active?: boolean;
 }
@@ -16,7 +17,7 @@ export function ToolButton({ icon: Icon, label, shortcut, active = false, classN
 	return (
 		<button
 			type={type}
-			title={shortcut ? t.common.withShortcut(label, shortcut) : label}
+			title={shortcut ? t.common.withShortcut(label, appShortcut(shortcut)) : label}
 			aria-label={label}
 			aria-pressed={active}
 			className={`no-drag flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-150 active:scale-90 disabled:pointer-events-none disabled:opacity-35 ${

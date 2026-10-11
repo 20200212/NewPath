@@ -96,7 +96,7 @@ function mergeTextEdit(annotations: Annotation[], edit: TextEditState): { annota
 export function Editor() {
 	const api = window.electronAPI;
 	const unit = clampUnit(window.devicePixelRatio);
-	const ocrSupported = api ? api.platform === "win32" : true;
+	const ocrSupported = api ? api.platform === "win32" || api.platform === "darwin" : true;
 	const { t } = useI18n();
 	const msg = t.editor;
 	/** 只在挂载时运行的副作用用它取文案，切换语言不会让它们重跑。 */

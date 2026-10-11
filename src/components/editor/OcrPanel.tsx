@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { Button } from "@/components/ui/Button";
 import { ChipButton } from "@/components/ui/ToolButton";
 import { useI18n } from "@/i18n";
+import { MOD_KEY } from "@/lib/platform";
 
 interface OcrPanelProps {
 	status: "idle" | "loading" | "done" | "error";
@@ -84,7 +85,8 @@ export function OcrPanel({ status, text, error, onTextChange, onRetry, onCopy, o
 		const textarea = textareaRef.current;
 		if (!textarea) return;
 		const onWheel = (event: WheelEvent) => {
-			if (!event.ctrlKey) return;
+			// macOS 触控板的双指缩放也以 ctrlKey 的形式到达
+			if (!event.ctrlKey && !event.metaKey) return;
 			event.preventDefault();
 			setFontSize((current) => {
 				const next = clamp(current + (event.deltaY < 0 ? 1 : -1), MIN_FONT, MAX_FONT);
@@ -140,7 +142,7 @@ export function OcrPanel({ status, text, error, onTextChange, onRetry, onCopy, o
 							ref={textareaRef}
 							value={text}
 							spellCheck={false}
-							title={labels.fontHint}
+							title={labels.fontHint(MOD_KEY)}
 							style={{ fontSize }}
 							className="min-h-0 flex-1 resize-none rounded-xl border border-gray-200 bg-apple-bg/50 p-3 leading-relaxed text-gray-800 outline-none focus:border-apple-blue/50"
 							onChange={(event) => onTextChange(event.target.value)}

@@ -63,13 +63,15 @@ export function ShortcutRecorder({ value, mac, onChange, onRecordingChange }: Sh
 			? error.text
 			: error.code === "unsupported"
 				? t.main.recorder.unsupported
-				: t.main.recorder.needsModifier;
+				: mac
+					? t.main.recorder.needsModifierMac
+					: t.main.recorder.needsModifier;
 
 	const display = recording
 		? pending.length
-			? `${pending.map(formatAccelerator).join(" + ")} + …`
+			? formatAccelerator([...pending, "…"].join("+"), mac)
 			: t.main.recorder.prompt
-		: formatAccelerator(value);
+		: formatAccelerator(value, mac);
 
 	return (
 		<div className="flex flex-col items-end gap-1.5">

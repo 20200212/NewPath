@@ -1,10 +1,6 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { nativeImage } from "electron";
 import { mt } from "./i18n";
-import type { OcrResult } from "./ipcTypes";
-import { parseOcrOutput, pickOcrScale, planOcrTiles } from "./ocrResult";
+import type { OcrEngine } from "./ocr";
+import { pickOcrScale } from "./ocrResult";
 import { quotePowerShell, runPowerShell } from "./powershell";
 
 const OCR_TIMEOUT_MS = 30_000;
@@ -69,44 +65,10 @@ foreach ($file in @(${files.map(quotePowerShell).join(", ")})) {
 `;
 }
 
-/** 识别 PNG 里的文字。小图先放大、长图纵向切块，结果坐标都换算回原图像素。 */
-export async function recognizeWithWindowsOcr(png: Buffer): Promise<OcrResult> {
-	const image = nativeImage.createFromBuffer(png);
-	if (image.isEmpty()) return { ok: false, reason: mt().cannotReadImage };
-	const size = image.getSize();
-	const scale = pickOcrScale(size);
-	const scaled =
-		scale === 1
-			? image
-			: image.resize({
-					width: Math.max(1, Math.round(size.width * scale)),
-					height: Math.max(1, Math.round(size.height * scale)),
-					quality: "best",
-				});
-	const scaledSize = scaled.getSize();
-	const tiles = planOcrTiles(scaledSize.height);
-
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "newpath-ocr-"));
-	try {
-		const files = await Promise.all(
-			tiles.map(async (tile, index) => {
-				const file = path.join(dir, `tile-${index}.png`);
-				const piece = scaled.crop({ x: 0, y: tile.offsetY, width: scaledSize.width, height: tile.height });
-				await fs.writeFile(file, piece.toPNG());
-				return file;
-			}),
-		);
-		const output = await runPowerShell(ocrScript(files), OCR_TIMEOUT_MS);
-		const parsed = parseOcrOutput(output, tiles, scale);
-		if (parsed.ok) return parsed;
-		if (parsed.error === "no-engine") {
-			return { ok: false, reason: mt().ocrNoLanguage };
-		}
-		return { ok: false, reason: mt().ocrFailed };
-	} catch (error) {
-		console.warn("OCR 失败", error);
-		return { ok: false, reason: mt().ocrFailedRetry };
-	} finally {
-		void fs.rm(dir, { recursive: true, force: true });
-	}
-}
+/** Windows 自带的 Windows.Media.Ocr：小图先放大（文字越大越准），长图按 4000 像素切块。 */
+export const windowsOcrEngine: OcrEngine = {
+	scale: (size) => pickOcrScale(size),
+	tileHeight: 4000,
+	run: (files) => runPowerShell(ocrScript(files), OCR_TIMEOUT_MS),
+	errorReason: (code) => (code === "no-engine" ? mt().ocrNoLanguage : mt().ocrFailed),
+};
