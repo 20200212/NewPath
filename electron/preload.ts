@@ -3,8 +3,12 @@ import type {
 	ActionResult,
 	CaptureFinishPayload,
 	CaptureSessionInfo,
+	CaptureWindowsInfo,
+	OcrResult,
+	PinImageInfo,
 	SaveResult,
 	ScreenshotItem,
+	SensitiveResult,
 	SettingsState,
 } from "./ipcTypes";
 
@@ -30,6 +34,9 @@ const api = {
 	finishCapture: (payload: CaptureFinishPayload): Promise<void> =>
 		ipcRenderer.invoke("capture:finish", payload),
 	cancelCapture: (): Promise<void> => ipcRenderer.invoke("capture:cancel"),
+	/** 窗口列表比画面晚到：收到 capture:windows 后再拉取；还没枚举完时返回 null。 */
+	getCaptureWindows: (): Promise<CaptureWindowsInfo | null> => ipcRenderer.invoke("capture:get-windows"),
+	onCaptureWindowsChanged: (callback: () => void) => subscribe("capture:windows", callback),
 
 	// 编辑窗口
 	getPreviewImage: (): Promise<string | null> => ipcRenderer.invoke("preview:get-image"),
@@ -38,6 +45,26 @@ const api = {
 	saveImage: (png: Uint8Array): Promise<SaveResult> => ipcRenderer.invoke("image:save", png),
 	/** 弹出对话框另存为。 */
 	saveImageAs: (png: Uint8Array): Promise<SaveResult> => ipcRenderer.invoke("image:save-as", png),
+	pinImage: (png: Uint8Array): Promise<void> => ipcRenderer.invoke("image:pin", png),
+	copyText: (text: string): Promise<void> => ipcRenderer.invoke("text:copy", text),
+	/** 拼接：隐藏编辑窗口再截一张，截完收到 preview:stitch-added，再调用 takeStitchImage 取图。 */
+	startStitch: (): Promise<void> => ipcRenderer.invoke("preview:start-stitch"),
+	onStitchAdded: (callback: () => void) => subscribe("preview:stitch-added", callback),
+	takeStitchImage: (): Promise<string | null> => ipcRenderer.invoke("preview:take-stitch"),
+	recognizeText: (png: Uint8Array): Promise<OcrResult> => ipcRenderer.invoke("ocr:recognize", png),
+	findSensitiveRegions: (png: Uint8Array): Promise<SensitiveResult> => ipcRenderer.invoke("ocr:find-sensitive", png),
+
+	// 钉图窗口
+	getPinImage: (): Promise<PinImageInfo | null> => ipcRenderer.invoke("pin:get-image"),
+	pinReady: (): Promise<void> => ipcRenderer.invoke("pin:ready"),
+	/** 拖动由主进程按光标位置移动窗口；-webkit-app-region 会吞掉滚轮和双击，所以不用它。 */
+	pinDragStart: (): Promise<void> => ipcRenderer.invoke("pin:drag-start"),
+	pinDragMove: (): Promise<void> => ipcRenderer.invoke("pin:drag-move"),
+	pinDragEnd: (): Promise<void> => ipcRenderer.invoke("pin:drag-end"),
+	/** 以光标为中心缩放，返回相对打开时的比例（百分比）。 */
+	pinZoom: (factor: number): Promise<number | null> => ipcRenderer.invoke("pin:zoom", factor),
+	pinCopy: (): Promise<void> => ipcRenderer.invoke("pin:copy"),
+	pinSave: (): Promise<SaveResult> => ipcRenderer.invoke("pin:save"),
 
 	// 主窗口：截图库（文件只用文件名指代，主进程负责定位到保存目录）
 	startCapture: (): Promise<void> => ipcRenderer.invoke("capture:start"),
@@ -64,6 +91,7 @@ const api = {
 
 	// 自绘标题栏
 	minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),
+	toggleMaximizeWindow: (): Promise<void> => ipcRenderer.invoke("window:toggle-maximize"),
 	closeWindow: (): Promise<void> => ipcRenderer.invoke("window:close"),
 };
 

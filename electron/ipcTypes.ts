@@ -8,8 +8,14 @@ export interface Rect {
 	height: number;
 }
 
-/** copy-path：保存到截图库后把文件路径写进剪贴板。 */
-export type CaptureAction = "copy" | "copy-path" | "save" | "edit";
+/**
+ * copy-path：保存到截图库后把文件路径写进剪贴板；pin：钉在桌面上；
+ * stitch：只在拼接模式下使用，把选区追加到编辑窗口。
+ */
+export type CaptureAction = "copy" | "copy-path" | "save" | "edit" | "pin" | "stitch";
+
+/** capture：普通截图；stitch：编辑窗口发起的"再截一张"。 */
+export type CaptureMode = "capture" | "stitch";
 
 /** 选区窗口拿到的冻结画面。 */
 export interface CaptureSessionInfo {
@@ -19,6 +25,20 @@ export interface CaptureSessionInfo {
 	imageBytes: Uint8Array;
 	mimeType: string;
 	scaleFactor: number;
+	mode: CaptureMode;
+}
+
+/** 截图时屏幕上可见的窗口，坐标与 Rect 相同（选区窗口里的 CSS 像素）。 */
+export interface DetectedWindow {
+	rect: Rect;
+	title: string;
+}
+
+/** 窗口列表比画面晚到，用 sessionId 对应到截图会话。 */
+export interface CaptureWindowsInfo {
+	sessionId: number;
+	/** 按 Z 序从前往后排列。 */
+	windows: DetectedWindow[];
 }
 
 export interface CaptureFinishPayload {
@@ -27,6 +47,44 @@ export interface CaptureFinishPayload {
 }
 
 export type SaveResult = { saved: true; filePath: string } | { saved: false };
+
+/** 钉图窗口要显示的图片。 */
+export interface PinImageInfo {
+	dataUrl: string;
+}
+
+/** OCR 识别出的一个词，坐标是图片像素。 */
+export interface OcrWord {
+	text: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export interface OcrLine {
+	text: string;
+	words: OcrWord[];
+}
+
+export type OcrResult = { ok: true; lines: OcrLine[] } | { ok: false; reason: string };
+
+export type SensitiveKind =
+	| "username"
+	| "hostname"
+	| "email"
+	| "ip"
+	| "mac"
+	| "secret"
+	| "phone"
+	| "id-card";
+
+/** 智能打码找到的敏感区域，坐标是图片像素。 */
+export interface SensitiveRegion extends Rect {
+	kind: SensitiveKind;
+}
+
+export type SensitiveResult = { ok: true; regions: SensitiveRegion[] } | { ok: false; reason: string };
 
 /** 截图库里的一项。只传文件名，主进程负责拼出完整路径并校验。 */
 export interface ScreenshotItem {

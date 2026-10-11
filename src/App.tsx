@@ -1,5 +1,6 @@
 import { Editor } from "./components/editor/Editor";
 import { MainWindow } from "./components/main/MainWindow";
+import { PinnedImage } from "./components/pin/PinnedImage";
 import { RegionSelector } from "./components/screenshot/RegionSelector";
 
 /** 所有窗口共用一个页面，主进程通过 ?windowType= 决定渲染哪个界面。 */
@@ -11,6 +12,8 @@ export default function App() {
 			return <RegionSelector />;
 		case "screenshot-preview":
 			return <Editor />;
+		case "screenshot-pin":
+			return <PinnedImage />;
 		default:
 			// "main"，以及 dev:ui 下不带参数直接打开
 			return <MainWindow />;

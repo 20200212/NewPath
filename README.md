@@ -37,15 +37,22 @@ electron/                 主进程（Node.js 环境）
   library.ts              截图库：列目录、文件名校验、写入、目录监听
   capture.ts              用 desktopCapturer 截取整块显示器
   cropRect.ts             CSS 像素选区 → 物理像素裁剪区域
+  windowList.ts           常驻 PowerShell 进程枚举可见窗口（Windows，用于悬停识别）
+  windowRects.ts          窗口矩形：物理像素 → 选区窗口内的 CSS 像素
+  pins.ts / pinGeometry.ts  钉图窗口的管理和缩放、定位
+  windowsOcr.ts / ocrResult.ts  调用 Windows.Media.Ocr 识别文字并解析结果
+  sensitiveText.ts        智能打码：在 OCR 结果里找邮箱、IP、密钥、手机号等
+  powershell.ts           运行 PowerShell 脚本（-EncodedCommand）
   screenshotFiles.ts      默认文件名等文件相关工具
   ipcTypes.ts             主进程与渲染进程共享的类型
 src/                      渲染进程（浏览器环境，无 Node 权限）
   App.tsx                 按 ?windowType= 分发到不同窗口界面
   components/main/        主界面：截图库、设置弹窗、快捷键录制
   components/screenshot/  选区窗口（RegionSelector）
-  components/editor/      编辑窗口（Editor）
-  components/ui/          通用组件：实体按键风格的按钮、弹窗、提示条、窗口按钮
-  editor/                 编辑器逻辑（导出 PNG，后续放标注、渲染）
+  components/editor/      编辑窗口：Editor（状态编排）、Stage（画布与交互）、工具栏、样式条、缩放条、OCR / 拼接面板
+  components/pin/         钉图窗口（PinnedImage）
+  components/ui/          通用组件：实体按键风格的按钮、工具按钮、弹窗、提示条、窗口按钮
+  editor/                 编辑器纯逻辑：标注模型、几何与命中测试、撤销历史、视口缩放、裁剪、拼接、智能打码、绘制与导出
   lib/                    纯函数工具（选区几何、快捷键转换、格式化）和 dev:ui 的 mock 数据
 public/icon.png           托盘与安装包图标（node scripts/generate-icon.mjs 生成的占位图）
 ```
@@ -61,7 +68,7 @@ public/icon.png           托盘与安装包图标（node scripts/generate-icon.
 ## 主界面
 
 - 列出截图库里的截图（缩略图、修改日期、大小），目录有变化时自动刷新
-- 每行可以复制图片、复制路径、重命名、删除（移到回收站）、在文件夹中显示；双击打开编辑窗口
+- 每行可以复制图片、复制路径、重命名、删除（移到回收站）、在文件夹中显示；双击在编辑窗口中打开（带缩放条）
 - 用「选择文件夹」或设置弹窗更换截图库位置；在设置里点击快捷键输入框，直接按下新的组合键即可修改截图快捷键
 - 界面风格：Apple 式的浅色、大圆角、毛玻璃，加上任天堂式的实体按键（底部实色阴影，悬停上浮、按下压平）
 
@@ -74,12 +81,14 @@ public/icon.png           托盘与安装包图标（node scripts/generate-icon.
 ## 路线图（参考 QuickShot 的功能）
 
 - [x] 托盘 + 全局快捷键 + 区域截图 + 复制 / 保存
-- [ ] 悬停高亮并点击截取窗口（Windows 需要枚举窗口）
+- [x] 悬停高亮并点击截取窗口（Windows）
 - [ ] 多显示器同时覆盖
-- [ ] 标注工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、马赛克 / 模糊
-- [ ] 撤销 / 重做，缩放与平移，裁剪
-- [ ] 钉图（置顶悬浮、透明度、鼠标穿透）
-- [ ] OCR 文字识别（Windows 用 Windows.Media.Ocr）
+- [x] 标注工具：矩形、椭圆、箭头、直线、画笔、荧光笔、文字、序号、马赛克 / 模糊
+- [x] 撤销 / 重做，缩放与平移，裁剪
+- [x] 钉图（置顶悬浮、缩放、透明度）
+- [ ] 钉图鼠标穿透
+- [x] OCR 文字识别、智能打码（Windows 用 Windows.Media.Ocr）
+- [x] 拼接（再截一张、粘贴 / 拖入图片）
 - [ ] 背景美化：渐变 / 壁纸、内边距、圆角、阴影
 - [x] 主界面（截图库）、自定义截图快捷键、自定义保存目录
 - [ ] 设置：开机自启、中英文界面

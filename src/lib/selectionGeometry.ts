@@ -71,3 +71,12 @@ export function containsPoint(rect: Rect, point: Point): boolean {
 export function isClick(start: Point, end: Point, threshold = 3): boolean {
 	return Math.abs(end.x - start.x) < threshold && Math.abs(end.y - start.y) < threshold;
 }
+
+/** 按 Z 序（从前往后）找出光标所在的窗口：第一个包含该点的就是最上层的那个。区间左闭右开。 */
+export function findWindowAt<T extends { rect: Rect }>(windows: readonly T[], point: Point): T | null {
+	for (const window of windows) {
+		const { x, y, width, height } = window.rect;
+		if (point.x >= x && point.x < x + width && point.y >= y && point.y < y + height) return window;
+	}
+	return null;
+}

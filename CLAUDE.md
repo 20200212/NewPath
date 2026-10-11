@@ -19,13 +19,17 @@ npm run verify                                # 测试 + 构建（build 里的 t
 ## 架构要点
 
 - **构建配置分层**：`vite.renderer.config.ts` 是渲染进程的公共配置；`vite.config.ts` 在其上叠加 `vite-plugin-electron`（编译 `electron/main.ts` 和 `preload.ts` 到 `dist-electron/`）；`vite.ui.config.ts` 只用公共配置，供浏览器单独调试。生产构建 `base` 为 `./`，因为打包后走 `file://`。
-- **单页多窗口**：所有窗口加载同一个 `index.html`，主进程通过 `?windowType=` 查询参数区分，`src/App.tsx` 按它分发组件。当前类型：`main`（主界面 / 截图库，也是不带参数时的默认）、`screenshot-region`（选区）、`screenshot-preview`（编辑器）。
+- **单页多窗口**：所有窗口加载同一个 `index.html`，主进程通过 `?windowType=` 查询参数区分，`src/App.tsx` 按它分发组件。当前类型：`main`（主界面 / 截图库，也是不带参数时的默认）、`screenshot-region`（选区）、`screenshot-preview`（编辑器）、`screenshot-pin`（钉图，可同时有多个，由 `electron/pins.ts` 的 `PinManager` 管理，来源校验用 `pins.fromEvent(event)`）。
 - **主窗口**：无边框（`frame: false`），标题栏由渲染进程自绘——可拖动的区域加 `.drag`，里面可点击的元素加 `.no-drag`（`Button` 自带）。关闭按钮只是隐藏到托盘。从主界面开始截图（`capture:start`）时，先隐藏主窗口并等 `HIDE_BEFORE_CAPTURE_MS`，截图结束后再恢复。
 - **截图库**：保存目录来自 `settings.saveDir`（`electron/settings.ts`，持久化在 `userData/settings.json`）。渲染进程只传**文件名**，主进程用 `resolveInDir` 拼出路径并拒绝路径穿越；文件操作统一经过 `withLibraryFile`，返回 `ActionResult`。`watchDir` 监听目录，变化时向主窗口推送 `library:changed`。缩略图由主进程生成 data URL，因为 CSP 不允许渲染进程加载 `file://`。
 - **全局快捷键**：`syncShortcut()` 按设置重新注册；`changeShortcut()` 先试注册，失败就回滚。设置里录制快捷键期间调用 `settings:suspend-shortcut` 暂停全局快捷键。
 - **选区窗口常驻复用**：`main.ts` 启动时就创建好选区窗口，之后只隐藏 / 显示，关闭事件被拦截为"取消"。每次截图开始和结束时主进程发送 `capture:changed`，渲染进程再调用 `getCaptureSession()` 主动拉取；会话 `id` 递增，用来丢弃过期的会话。
 - **防闪烁显示**：窗口先 `setOpacity(0)` 显示，渲染进程解码并画好截图后调用 `captureReady(id)`，主进程才设为不透明；超过 `REVEAL_TIMEOUT_MS` 会强制显示。改动选区窗口的加载逻辑时要保住这条路径。
 - **两份图像**：主进程保留原始 `NativeImage` 用于裁剪；发给渲染进程的只是用于显示的 JPEG。渲染进程回传的是 CSS 像素选区，由 `electron/cropRect.ts` 按 `scaleFactor` 换算成物理像素再裁剪。
+- **悬停识别窗口**：Windows 上 `WindowListHelper`（`electron/windowList.ts`）在启动时拉起一个常驻 PowerShell 进程，按行请求、按行返回 JSON。`startCapture()` 里枚举窗口与截屏并行；列表比画面晚到，写进 `session.windows` 后发 `capture:windows`，渲染进程再用 `getCaptureWindows()` 拉取并按 sessionId 校验。其他平台返回空列表，单击退回全屏。
+- **拼接模式**：编辑器调用 `preview:start-stitch` 后，主进程隐藏编辑窗口，以 `mode: "stitch"` 开始截图；这时选区只接受 `stitch` 动作，结束后（包括取消）恢复编辑窗口，图片经 `preview:stitch-added` → `takeStitchImage()` 交给编辑器。
+- **编辑器结构**：`Editor.tsx` 管文档（`EditorDoc`，快照式撤销，见 `src/editor/history.ts`）、工具样式和键盘；`Stage.tsx` 用一块视口大小的 canvas 绘制并处理指针交互，接口见 `stageTypes.ts`；缩放平移在 `useStageView.ts`。标注坐标一律是"源图"（拼接、裁剪后）像素，屏幕显示和导出共用 `drawAnnotations`。
+- **OCR / 智能打码**：只在 Windows 上可用（渲染进程按 `api.platform` 隐藏按钮），主进程把 PNG 写到临时目录后用 PowerShell 调 `Windows.Media.Ocr`；敏感内容检测是 `electron/sensitiveText.ts` 里的纯函数。
 - **编辑器导出**：编辑窗口在渲染进程里合成 PNG（`src/editor/exportImage.ts`），以 `Uint8Array` 通过 `image:copy` / `image:save`（存进截图库）/ `image:save-as`（弹出对话框）交给主进程；主进程用 `toPngBuffer` 校验数据。
 
 ## 新增 IPC 的步骤

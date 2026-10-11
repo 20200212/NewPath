@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -23,15 +24,27 @@ import { toDevicePixelRect } from "./cropRect";
 import type {
 	ActionResult,
 	AppSettings,
+	CaptureAction,
 	CaptureFinishPayload,
+	CaptureMode,
 	CaptureSessionInfo,
+	CaptureWindowsInfo,
+	DetectedWindow,
+	OcrResult,
+	PinImageInfo,
 	SaveResult,
 	ScreenshotItem,
+	SensitiveResult,
 	SettingsState,
 } from "./ipcTypes";
 import { listScreenshots, resolveInDir, saveToLibrary, validateFileName, watchDir } from "./library";
+import { PinManager } from "./pins";
 import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
+import { findSensitiveRegions, type Identity } from "./sensitiveText";
 import { loadSettings, saveSettings } from "./settings";
+import { WindowListHelper } from "./windowList";
+import { toDisplayLocalWindows } from "./windowRects";
+import { recognizeWithWindowsOcr } from "./windowsOcr";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -43,7 +56,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : 
 
 const APP_ID = "com.newpath.screenshot";
 
-type WindowType = "main" | "screenshot-region" | "screenshot-preview";
+type WindowType = "main" | "screenshot-region" | "screenshot-preview" | "screenshot-pin";
 
 /** 选区窗口在截图前一直是透明的，渲染进程画好之后才显示；超过这个时间仍未就绪则强制显示。 */
 const REVEAL_TIMEOUT_MS = 1500;
@@ -59,7 +72,14 @@ interface CaptureSession {
 	display: Display;
 	revealed: boolean;
 	startedAt: number;
+	mode: CaptureMode;
+	/** 拼接模式下发起截图的编辑窗口，截图结束后把它恢复出来。 */
+	stitchTarget: BrowserWindow | null;
+	/** 截图时屏幕上的窗口，比画面晚到；null 表示还没枚举完。 */
+	windows: DetectedWindow[] | null;
 }
+
+const CAPTURE_ACTIONS: readonly CaptureAction[] = ["copy", "copy-path", "save", "edit", "pin", "stitch"];
 
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -73,6 +93,11 @@ let captureStarting = false;
 let restoreMainAfterCapture = false;
 let previewWindow: BrowserWindow | null = null;
 let previewImage: NativeImage | null = null;
+/** "再截一张"得到的图片，等编辑窗口来取。 */
+let pendingStitch: NativeImage | null = null;
+
+const windowLister = new WindowListHelper();
+const pins = new PinManager((options) => createWindow("screenshot-pin", options), () => refreshTrayMenu());
 
 let settingsFile = "";
 let settings: AppSettings;
@@ -188,12 +213,13 @@ function openPreviewWindow(image: NativeImage) {
 	if (previewWindow && !previewWindow.isDestroyed()) previewWindow.close();
 
 	const { width, height } = image.getSize();
-	const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+	const { workArea, scaleFactor } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+	// 工具栏一行放得下所有按钮需要约 1000px；窗口按截图的逻辑尺寸留出工具栏和缩放条的位置
 	const win = createWindow("screenshot-preview", {
-		width: Math.min(Math.max(width + 80, 720), workArea.width),
-		height: Math.min(Math.max(height + 160, 480), workArea.height),
-		minWidth: 560,
-		minHeight: 360,
+		width: Math.min(Math.max(Math.round(width / scaleFactor) + 160, 1000), workArea.width),
+		height: Math.min(Math.max(Math.round(height / scaleFactor) + 240, 640), workArea.height),
+		minWidth: Math.min(900, workArea.width),
+		minHeight: Math.min(560, workArea.height),
 		frame: false,
 		title: "NewPath 编辑",
 		backgroundColor: "#F2F2F7",
@@ -203,14 +229,21 @@ function openPreviewWindow(image: NativeImage) {
 		if (previewWindow === win) {
 			previewWindow = null;
 			previewImage = null;
+			pendingStitch = null;
 		}
 	});
 	previewWindow = win;
 }
 
+function showWindow(win: BrowserWindow | null) {
+	if (!win || win.isDestroyed()) return;
+	win.show();
+	win.focus();
+}
+
 // ---------------------------------------------------------------- 截图流程
 
-async function startCapture() {
+async function startCapture(mode: CaptureMode = "capture", stitchTarget: BrowserWindow | null = null) {
 	if (captureSession) {
 		regionWindow?.focus();
 		return;
@@ -220,6 +253,8 @@ async function startCapture() {
 	const startedAt = performance.now();
 	try {
 		const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+		// 枚举窗口和截屏同时进行，不拖慢选区窗口的显示
+		const windowsPromise = windowLister.list(process.pid);
 		const image = await captureDisplay(display);
 		if (!image) {
 			restoreMainWindow();
@@ -239,8 +274,16 @@ async function startCapture() {
 			display,
 			revealed: false,
 			startedAt,
+			mode,
+			stitchTarget,
+			windows: null,
 		};
 		captureSession = session;
+		void windowsPromise.then((windows) => {
+			if (captureSession !== session) return;
+			session.windows = toDisplayLocalWindows(windows, display.bounds, (rect) => screen.screenToDipRect(null, rect));
+			regionWindow?.webContents.send("capture:windows");
+		});
 
 		// 先以完全透明的状态显示，等渲染进程画好截图再变为可见，避免黑屏闪烁或残留上一次的画面
 		const win = getRegionWindow();
@@ -268,6 +311,18 @@ async function startCaptureFromMain() {
 	await startCapture();
 }
 
+/** 编辑窗口的"再截一张"：先藏起编辑窗口，截完（或取消）再恢复。 */
+async function startStitchCapture() {
+	const target = previewWindow;
+	if (!target || target.isDestroyed() || captureSession || captureStarting) return;
+	target.hide();
+	await new Promise((resolve) => setTimeout(resolve, HIDE_BEFORE_CAPTURE_MS));
+	await startCapture("stitch", target);
+	// 截图失败时没有会话，直接把编辑窗口恢复出来（await 之后要重新读取，TS 的收窄在这里不成立）
+	const session = captureSession as CaptureSession | null;
+	if (session?.stitchTarget !== target) showWindow(target);
+}
+
 function restoreMainWindow() {
 	if (!restoreMainAfterCapture) return;
 	restoreMainAfterCapture = false;
@@ -286,6 +341,7 @@ function revealRegionWindow(sessionId: number) {
 }
 
 function closeCaptureSession() {
+	const session = captureSession;
 	captureSession = null;
 	const win = regionWindow;
 	if (win && !win.isDestroyed()) {
@@ -295,6 +351,7 @@ function closeCaptureSession() {
 		win.webContents.send("capture:changed");
 	}
 	restoreMainWindow();
+	if (session?.stitchTarget) showWindow(session.stitchTarget);
 }
 
 /** 另存为：弹出保存对话框。 */
@@ -418,6 +475,38 @@ function toPngBuffer(data: unknown): Buffer | null {
 	return Buffer.from(data);
 }
 
+function parseFinishPayload(payload: unknown): CaptureFinishPayload | null {
+	if (!payload || typeof payload !== "object") return null;
+	const { rect, action } = payload as Record<string, unknown>;
+	if (!CAPTURE_ACTIONS.includes(action as CaptureAction) || !rect || typeof rect !== "object") return null;
+	const { x, y, width, height } = rect as Record<string, unknown>;
+	if (![x, y, width, height].every((value) => typeof value === "number")) return null;
+	return { rect: { x, y, width, height } as CaptureFinishPayload["rect"], action: action as CaptureAction };
+}
+
+/** 本机用户名和主机名，智能打码时一并遮住。 */
+function localIdentity(): Identity {
+	const userNames = new Set<string>();
+	const hostNames = new Set<string>();
+	try {
+		userNames.add(os.userInfo().username);
+	} catch {
+		// 某些环境下拿不到用户信息
+	}
+	for (const name of [process.env.USERNAME, process.env.USER, path.basename(os.homedir())]) if (name) userNames.add(name);
+	for (const name of [os.hostname(), process.env.COMPUTERNAME]) {
+		if (!name) continue;
+		hostNames.add(name);
+		hostNames.add(name.split(".")[0]);
+	}
+	return { userNames: [...userNames], hostNames: [...hostNames] };
+}
+
+function recognizeText(png: Buffer): Promise<OcrResult> {
+	if (process.platform !== "win32") return Promise.resolve({ ok: false, reason: "当前系统暂不支持文字识别" });
+	return recognizeWithWindowsOcr(png);
+}
+
 /** 截图库文件操作的统一入口：校验文件名，把异常转成给用户看的提示。 */
 async function withLibraryFile(name: unknown, action: (filePath: string) => unknown): Promise<ActionResult> {
 	const filePath = resolveInDir(settings.saveDir, name);
@@ -457,7 +546,14 @@ function registerIpc() {
 			imageBytes: session.previewJpeg,
 			mimeType: "image/jpeg",
 			scaleFactor: session.display.scaleFactor,
+			mode: session.mode,
 		};
+	});
+
+	ipcMain.handle("capture:get-windows", (event): CaptureWindowsInfo | null => {
+		const session = captureSession;
+		if (!session?.windows || !isFrom(event, regionWindow)) return null;
+		return { sessionId: session.id, windows: session.windows };
 	});
 
 	ipcMain.handle("capture:ready", (event, sessionId: unknown) => {
@@ -468,10 +564,14 @@ function registerIpc() {
 		if (isFrom(event, regionWindow)) closeCaptureSession();
 	});
 
-	ipcMain.handle("capture:finish", async (event, payload: CaptureFinishPayload) => {
+	ipcMain.handle("capture:finish", async (event, data: unknown) => {
 		const session = captureSession;
-		if (!session || !isFrom(event, regionWindow)) return;
-		const crop = toDevicePixelRect(payload.rect, session.display.scaleFactor, session.image.getSize());
+		const payload = parseFinishPayload(data);
+		if (!session || !payload || !isFrom(event, regionWindow)) return;
+		// 拼接模式只接受 stitch，普通截图不接受 stitch
+		if ((payload.action === "stitch") !== (session.mode === "stitch")) return;
+		const { scaleFactor, bounds } = session.display;
+		const crop = toDevicePixelRect(payload.rect, scaleFactor, session.image.getSize());
 		closeCaptureSession();
 		if (!crop) return;
 
@@ -495,6 +595,17 @@ function registerIpc() {
 			case "edit":
 				openPreviewWindow(image);
 				break;
+			case "pin":
+				// 钉在截图时的原位置
+				pins.open(image, scaleFactor, { x: bounds.x + crop.x / scaleFactor, y: bounds.y + crop.y / scaleFactor });
+				break;
+			case "stitch": {
+				const target = session.stitchTarget;
+				if (!target || target.isDestroyed() || target !== previewWindow) break;
+				pendingStitch = image;
+				target.webContents.send("preview:stitch-added");
+				break;
+			}
 		}
 	});
 
@@ -502,6 +613,45 @@ function registerIpc() {
 	ipcMain.handle("preview:get-image", (event) => {
 		if (!isFrom(event, previewWindow) || !previewImage) return null;
 		return previewImage.toDataURL();
+	});
+
+	ipcMain.handle("preview:start-stitch", (event) => {
+		if (isFrom(event, previewWindow)) void startStitchCapture();
+	});
+
+	ipcMain.handle("preview:take-stitch", (event) => {
+		if (!isFrom(event, previewWindow) || !pendingStitch) return null;
+		const dataUrl = pendingStitch.toDataURL();
+		pendingStitch = null;
+		return dataUrl;
+	});
+
+	ipcMain.handle("image:pin", (event, data: unknown) => {
+		const png = toPngBuffer(data);
+		const win = previewWindow;
+		if (!win || !isFrom(event, win) || !png) return;
+		const image = nativeImage.createFromBuffer(png);
+		if (image.isEmpty()) return;
+		pins.open(image, screen.getDisplayMatching(win.getBounds()).scaleFactor, null);
+	});
+
+	ipcMain.handle("text:copy", (event, text: unknown) => {
+		if (isFrom(event, previewWindow) && typeof text === "string") clipboard.writeText(text);
+	});
+
+	ipcMain.handle("ocr:recognize", async (event, data: unknown): Promise<OcrResult> => {
+		const png = toPngBuffer(data);
+		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: "图片数据无效" };
+		return recognizeText(png);
+	});
+
+	ipcMain.handle("ocr:find-sensitive", async (event, data: unknown): Promise<SensitiveResult> => {
+		const png = toPngBuffer(data);
+		if (!isFrom(event, previewWindow) || !png) return { ok: false, reason: "图片数据无效" };
+		const result = await recognizeText(png);
+		if (!result.ok) return result;
+		const size = nativeImage.createFromBuffer(png).getSize();
+		return { ok: true, regions: findSensitiveRegions(result.lines, localIdentity(), size) };
 	});
 
 	ipcMain.handle("image:copy", (event, data: unknown) => {
@@ -520,6 +670,51 @@ function registerIpc() {
 		const png = toPngBuffer(data);
 		if (!isFrom(event, previewWindow) || !png) return { saved: false };
 		return savePngAs(png);
+	});
+
+	// 钉图窗口（只接受来自钉图窗口自己的调用）
+	ipcMain.handle("pin:get-image", (event): PinImageInfo | null => {
+		const record = pins.fromEvent(event);
+		return record ? pins.imageInfo(record) : null;
+	});
+
+	ipcMain.handle("pin:ready", (event) => {
+		const record = pins.fromEvent(event);
+		if (record) pins.markReady(record);
+	});
+
+	ipcMain.handle("pin:drag-start", (event) => {
+		const record = pins.fromEvent(event);
+		if (record) pins.dragStart(record);
+	});
+
+	ipcMain.handle("pin:drag-move", (event) => {
+		const record = pins.fromEvent(event);
+		if (record) pins.dragMove(record);
+	});
+
+	ipcMain.handle("pin:drag-end", (event) => {
+		const record = pins.fromEvent(event);
+		if (record) pins.dragEnd(record);
+	});
+
+	ipcMain.handle("pin:zoom", (event, factor: unknown): number | null => {
+		const record = pins.fromEvent(event);
+		if (!record || typeof factor !== "number" || !Number.isFinite(factor) || factor <= 0) return null;
+		return pins.zoom(record, factor);
+	});
+
+	ipcMain.handle("pin:copy", (event) => {
+		const record = pins.fromEvent(event);
+		if (record) clipboard.writeImage(record.image);
+	});
+
+	ipcMain.handle("pin:save", async (event): Promise<SaveResult> => {
+		const record = pins.fromEvent(event);
+		if (!record) return { saved: false };
+		const result = await savePngToLibrary(record.image.toPNG());
+		if (result.saved) notifySaved(result.filePath);
+		return result;
 	});
 
 	// 主窗口：截图库
@@ -594,6 +789,13 @@ function registerIpc() {
 		BrowserWindow.fromWebContents(event.sender)?.minimize();
 	});
 
+	ipcMain.handle("window:toggle-maximize", (event) => {
+		const win = BrowserWindow.fromWebContents(event.sender);
+		if (!win?.isMaximizable()) return;
+		if (win.isMaximized()) win.unmaximize();
+		else win.maximize();
+	});
+
 	ipcMain.handle("window:close", (event) => {
 		BrowserWindow.fromWebContents(event.sender)?.close();
 	});
@@ -612,7 +814,7 @@ function createTray() {
 }
 
 function refreshTrayMenu() {
-	if (!tray) return;
+	if (!tray || tray.isDestroyed()) return;
 	const usable = shortcutRegistered && !shortcutSuspended;
 	tray.setContextMenu(
 		Menu.buildFromTemplate([
@@ -622,6 +824,7 @@ function refreshTrayMenu() {
 				accelerator: usable ? settings.captureShortcut : undefined,
 				click: () => void startCapture(),
 			},
+			{ label: "关闭所有钉图", enabled: pins.count > 0, click: () => pins.closeAll() },
 			{ type: "separator" },
 			{ label: "退出", role: "quit" },
 		]),
@@ -646,6 +849,7 @@ if (!app.requestSingleInstanceLock()) {
 	app.on("will-quit", () => {
 		globalShortcut.unregisterAll();
 		stopWatching?.();
+		windowLister.dispose();
 	});
 
 	app.whenReady().then(async () => {
@@ -662,6 +866,8 @@ if (!app.requestSingleInstanceLock()) {
 		createTray();
 		syncShortcut();
 		startWatching();
+		// 窗口枚举进程启动要一两秒，提前拉起来
+		windowLister.start();
 		// 提前创建并加载好选区窗口，第一次截图也不用等页面加载
 		getRegionWindow();
 		getMainWindow();
