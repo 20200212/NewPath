@@ -45,7 +45,7 @@ export interface CaptureSessionInfo {
 export interface DetectedWindow {
 	rect: Rect;
 	title: string;
-	/** macOS 的窗口编号（CGWindowID），单击选中窗口后可以单独截取这个窗口；其他平台没有。 */
+	/** 窗口编号（macOS 的 CGWindowID、Windows 的 HWND），单击选中窗口后可以单独截取这个窗口；Linux 没有。 */
 	id?: number;
 }
 
@@ -59,7 +59,7 @@ export interface CaptureWindowsInfo {
 export interface CaptureFinishPayload {
 	rect: Rect;
 	action: CaptureAction;
-	/** 选区是单击选中的窗口且没有再调整过：macOS 上改为单独截取这个窗口（带透明圆角、被遮住的部分也完整）。 */
+	/** 选区是单击选中的窗口且没有再调整过：改为单独截取这个窗口（被遮住的部分也完整，macOS 上带透明圆角）。 */
 	windowId?: number;
 }
 

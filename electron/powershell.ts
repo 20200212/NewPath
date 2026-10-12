@@ -1,4 +1,8 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 /** 系统自带的 Windows PowerShell 5.1；用 -EncodedCommand 传脚本，不落盘、也不受执行策略限制。 */
 export const POWERSHELL = "powershell.exe";
@@ -10,6 +14,21 @@ export function encodePowerShell(script: string): string {
 
 export function powerShellArgs(script: string): string[] {
 	return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowerShell(script)];
+}
+
+/**
+ * 长脚本超过命令行长度上限（约 32K 字符，-EncodedCommand 还会膨胀近三倍）时，先写成文件再用 -File 运行。
+ * 文件名带内容哈希：脚本改了就换新文件，旧文件留着也无妨。内容要带 UTF-8 BOM，否则 PowerShell 5.1 按系统代码页读，中文会乱码。
+ */
+export function writePowerShellScript(name: string, script: string): string {
+	const hash = createHash("sha1").update(script).digest("hex").slice(0, 12);
+	const filePath = path.join(os.tmpdir(), `${name}-${hash}.ps1`);
+	if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, `\ufeff${script}`, "utf8");
+	return filePath;
+}
+
+export function powerShellFileArgs(scriptPath: string): string[] {
+	return ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath];
 }
 
 /** PowerShell 单引号字符串字面量：单引号写两次即可转义。 */

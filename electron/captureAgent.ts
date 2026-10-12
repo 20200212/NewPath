@@ -20,6 +20,16 @@ interface Pending {
 	timer: ReturnType<typeof setTimeout>;
 }
 
+/**
+ * 滚动截图控制器（scrollSession.ts）需要的最小接口：macOS 上是常驻的截图进程 CaptureAgent，
+ * Windows 上是 windowsScrollAgent.ts 用助手进程和工作线程拼出来的同一套协议。
+ */
+export interface ScrollAgent {
+	request(command: Record<string, unknown>, timeoutMs: number): Promise<AgentResponse | null>;
+	onEvent(listener: ((event: AgentEvent) => void) | null): void;
+	stop(): void;
+}
+
 type Diagnostic = (event: string, details?: Record<string, unknown>) => void;
 
 /** 解析截图进程输出的一行回答；格式不对的一律忽略。 */

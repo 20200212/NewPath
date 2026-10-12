@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { app, BrowserWindow, globalShortcut, nativeImage, screen, type Display, type IpcMainInvokeEvent, type NativeImage } from "electron";
-import type { AgentEvent, CaptureAgent } from "./captureAgent";
+import type { AgentEvent, ScrollAgent } from "./captureAgent";
 import { serializeError, writeDiagnostic } from "./diagnostics";
 import type { Rect, ScrollCaptureState } from "./ipcTypes";
 import {
@@ -14,7 +14,7 @@ import {
 	type ScrollProgress,
 } from "./scrollCapture";
 
-// 滚动截图（macOS 14 起）：选区确定后 NewPath 让出前台，截图进程持续截取选区并拼接，
+// 滚动截图（macOS 14 起、Windows 10 起）：选区确定后 NewPath 让出前台，截图进程 / 助手持续截取选区并拼接，
 // 选区四周画一圈彩色边框，旁边的面板显示进度；完成（↩）把长图交出去，Esc 取消。
 // 移植自 QuickShot（GPL-3.0-or-later，https://github.com/cclank/quickshot）。
 
@@ -47,7 +47,8 @@ export interface ScrollStartRequest {
 }
 
 export interface ScrollDeps {
-	agent: CaptureAgent;
+	/** macOS 上是常驻的截图进程，Windows 上是 windowsScrollAgent.ts。 */
+	agent: ScrollAgent;
 	createPanel: (options: Electron.BrowserWindowConstructorOptions) => BrowserWindow;
 	/** 让出前台时要重新露出来的 NewPath 窗口（钉图、编辑器）。 */
 	visibleWindows: () => BrowserWindow[];
@@ -57,6 +58,8 @@ export interface ScrollDeps {
 	fixture: string | null;
 	/** 开发模式关掉了全局快捷键时，也不抢 Esc / ↩，用面板上的按钮。 */
 	shortcutsEnabled: boolean;
+	/** Windows 10 2004 起：把边框和面板窗口从屏幕采集里排除（WDA_EXCLUDEFROMCAPTURE），它们就不会出现在长图里。 */
+	excludeFromCapture: boolean;
 }
 
 function temporaryPath(prefix: string, extension: string) {
@@ -103,6 +106,8 @@ export class ScrollCaptureController {
 				cmd: "scroll-start",
 				display: display.id,
 				rect: region.points,
+				// Windows 的助手直接用物理像素；macOS 的截图进程忽略这个字段
+				pixelRect: request.pixelRect,
 				size: region.pixels,
 				exclude: process.pid,
 				maxHeight: scrollMaxHeight(region.pixels.width),
@@ -194,6 +199,7 @@ animation:turn 6s linear infinite}
 		});
 		win.webContents.on("will-navigate", (event) => event.preventDefault());
 		win.setIgnoreMouseEvents(true);
+		if (this.deps.excludeFromCapture) win.setContentProtection(true);
 		win.setAlwaysOnTop(true, "floating");
 		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 		void win
@@ -228,6 +234,7 @@ animation:turn 6s linear infinite}
 			hasShadow: false,
 			webPreferences: { backgroundThrottling: false },
 		});
+		if (this.deps.excludeFromCapture) panel.setContentProtection(true);
 		panel.setAlwaysOnTop(true, "floating", 1);
 		panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 		panel.once("ready-to-show", () => {

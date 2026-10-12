@@ -33,7 +33,7 @@ describe("构建产物和安装位置", () => {
 	});
 
 	it("固定安装到 /Applications/NewPath.app", () => {
-		expect(INSTALL_TARGET).toBe("/Applications/NewPath.app");
+		expect(INSTALL_TARGET).toBe(path.join("/Applications", "NewPath.app"));
 	});
 });
 

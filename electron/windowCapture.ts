@@ -1,6 +1,6 @@
 import type { Rect } from "./ipcTypes";
 
-// macOS 上用 /usr/sbin/screencapture 截图时用到的纯函数。
+// 单独截取一个窗口时用到的纯函数：macOS 的 /usr/sbin/screencapture 参数、Windows 的 PrintWindow 结果检查。
 // 移植自 QuickShot（GPL-3.0-or-later，https://github.com/cclank/quickshot）的 electron/windowCapture.ts。
 
 /** 单独截一个窗口（CGWindowID），不带阴影、不发出快门声。 */
@@ -43,4 +43,29 @@ export function findOpaqueBounds(bitmap: Uint8Array, width: number, height: numb
 	let right = width - 1;
 	while (right > left && !columnHasPixel(right)) right -= 1;
 	return { x: left, y: top, width: right - left + 1, height: bottom - top + 1 };
+}
+
+/**
+ * 位图是否整张同一种颜色。Windows 上 PrintWindow 对部分用 DirectComposition 绘制的窗口会返回全黑或全白，
+ * 这样的结果没有意义，调用方应退回按选区裁剪。隔 step 个像素采样一次，但首尾行列一定会查到。
+ */
+export function isUniformBitmap(bitmap: Uint8Array, width: number, height: number, step = 7): boolean {
+	if (width <= 0 || height <= 0 || bitmap.length < width * height * 4) return true;
+	const stride = Math.max(1, step);
+	const positions = (size: number) => {
+		const result: number[] = [];
+		for (let i = 0; i < size; i += stride) result.push(i);
+		if (result[result.length - 1] !== size - 1) result.push(size - 1);
+		return result;
+	};
+	const columns = positions(width);
+	for (const y of positions(height)) {
+		for (const x of columns) {
+			const offset = (y * width + x) * 4;
+			if (bitmap[offset] !== bitmap[0] || bitmap[offset + 1] !== bitmap[1] || bitmap[offset + 2] !== bitmap[2] || bitmap[offset + 3] !== bitmap[3]) {
+				return false;
+			}
+		}
+	}
+	return true;
 }

@@ -8,14 +8,14 @@ NewPath 的 macOS 版和 Windows 版共用同一套代码，差别集中在主�
 |---|---|---|
 | 截图权限 | 不需要 | 需要“屏幕录制”权限；没授权时不截图，打开欢迎引导去授权，授权后重启生效（见下文） |
 | 截屏 | `desktopCapturer` | 常驻截图进程（ScreenCaptureKit）→ `screencapture` → `desktopCapturer` |
-| 单击选窗口 | 按窗口区域裁剪 | 单独截取这个窗口（透明圆角、被挡住的部分也完整） |
-| 滚动截图 | 不支持 | macOS 14 起支持 |
+| 单击选窗口 | 单独截取这个窗口（PrintWindow，被挡住的部分也完整；画不出来的窗口退回按窗口区域裁剪） | 单独截取这个窗口（透明圆角、被挡住的部分也完整） |
+| 滚动截图 | Windows 10 起：常驻 PowerShell 助手 BitBlt 连续截屏，TypeScript 拼接（`scrollStitcher.ts`） | macOS 14 起：截图进程 ScreenCaptureKit 连续截屏，Swift 拼接 |
 | 主窗口 / 编辑窗口标题栏 | 无边框，渲染进程自绘最小化 / 最大化 / 关闭 | `titleBarStyle: "hiddenInset"`，用系统的红绿灯，渲染进程按 `isMac` 不画自己的按钮、左侧留出空位 |
 | 托盘 | 彩色图标，单击截图、右键菜单 | 菜单栏单色模板图（`public/trayTemplate.png` + `@2x`），单击弹出菜单；图标被系统隐藏时重建一次，仍看不见就在再次打开应用时说明怎么打开 |
 | 快捷键自我修复 | 每分钟检查一次 | 另外在切换输入法、睡眠唤醒、解锁后重新注册 |
 | 默认截图快捷键 | `Alt+C` | `⌘⇧X`（`Command+Shift+X`） |
 | 快捷键提示 | `Ctrl+S` | `⌘S`（`formatAppShortcut`），处理按键时 Ctrl 和 ⌘ 都认 |
-| 悬停识别窗口 | 常驻 PowerShell 进程（`windowList.ts`），物理像素 | 截图进程的 `windows` 命令，退回 `newpath-window-list`（CoreGraphics）；坐标本来就是点 / DIP，带窗口编号 |
+| 悬停识别窗口 | 常驻 PowerShell 进程（`windowsHelper.ts`），物理像素，带 HWND | 截图进程的 `windows` 命令，退回 `newpath-window-list`（CoreGraphics）；坐标本来就是点 / DIP，带窗口编号 |
 | OCR / 智能打码 | `Windows.Media.Ocr`（PowerShell） | `newpath-ocr`（Vision 框架） |
 | 应用菜单 | Electron 默认 | 精简为 应用 / 文件 / 编辑 / 窗口，去掉会抢编辑器快捷键的页面缩放和重新加载 |
 | 开机自启 | 登录项带 `--hidden` | 登录项不支持参数；macOS 13 起 `wasOpenedAtLogin` 恒为 false，用“开了自启且系统刚启动不久”判断 |
@@ -36,7 +36,7 @@ NewPath 的 macOS 版和 Windows 版共用同一套代码，差别集中在主�
 
 设置里的“选区方式”可以换成**系统框选**（`screencapture -i`，和 ⌘⇧4 一样），选完直接打开编辑器；这种方式没有悬停识别窗口和滚动截图。
 
-### 滚动截图（macOS 14 起）
+### 滚动截图（macOS 14 起；Windows 10 起由 `windowsScrollAgent.ts` 用同一套协议实现）
 
 选区工具栏里点“滚动截图”，或按 S 切到滚动截图模式；托盘菜单的“滚动截图”和 `--capture-scroll` 会一开始就处在这个模式。开始后 NewPath 让出前台，截图进程持续截取选区并拼接（`ScrollStitcher.swift`），选区四周有一圈彩色边框，旁边的面板显示长度和预览；↩ 完成、Esc 取消，长图打开编辑器（拼接模式下追加到编辑窗口）。最长 30000 像素，10 分钟后自动完成。拼接算法的检查：`node scripts/test-scroll-stitcher.mjs`。
 
@@ -87,7 +87,7 @@ NEWPATH_DEV_CAPTURE_FILE=~/Desktop/screen.png npm run dev
 |---|---|
 | `NEWPATH_USER_DATA_DIR` | 用户数据目录（设置、日志、单实例锁）。默认是 `~/Library/Application Support/NewPath Dev`，不和安装版共用，安装版在运行时也能启动开发版 |
 | `NEWPATH_DEV_CAPTURE_FILE` | 一张 PNG / JPEG，截图时代替真实屏幕，不需要权限 |
-| `NEWPATH_DEV_SCROLL_FIXTURE` | 一张很高的 PNG，滚动截图时代替屏幕“滚动”，不受系统版本限制 |
+| `NEWPATH_DEV_SCROLL_FIXTURE` | 一张很高的 PNG，滚动截图时代替屏幕“滚动”，不受系统版本限制（Windows 上同样可用） |
 | `NEWPATH_DEV_SHORTCUT=0` | 不注册全局截图快捷键（也不抢滚动截图的 Esc / ↩），免得和正在运行的安装版抢 |
 | `NEWPATH_DEV_REMOTE_DEBUGGING_PORT` | 打开 Chromium 远程调试端口，例如 `9222` |
 | `NEWPATH_DEV_SETTINGS_BUNDLE` | 测试拖拽授权小窗时，用另一个应用的 Bundle ID 代替“系统设置”，例如 `com.apple.TextEdit` |

@@ -7,7 +7,7 @@ export interface RawWindow {
 	width: number;
 	height: number;
 	title: string;
-	/** macOS 的窗口编号（CGWindowID）；Windows 上没有。 */
+	/** 窗口编号：macOS 的 CGWindowID、Windows 的 HWND；Linux 没有。 */
 	id?: number;
 }
 

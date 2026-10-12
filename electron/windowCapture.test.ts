@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { findOpaqueBounds, interactiveCaptureArguments, regionCaptureArguments, windowCaptureArguments } from "./windowCapture";
+import {
+	findOpaqueBounds,
+	interactiveCaptureArguments,
+	isUniformBitmap,
+	regionCaptureArguments,
+	windowCaptureArguments,
+} from "./windowCapture";
 
 function bitmap(width: number, height: number, opaque: (x: number, y: number) => number) {
 	const data = new Uint8Array(width * height * 4);
@@ -52,5 +58,33 @@ describe("screencapture 参数", () => {
 
 	it("系统框选", () => {
 		expect(interactiveCaptureArguments("/tmp/s.png")).toEqual(["-i", "-o", "-x", "-t", "png", "/tmp/s.png"]);
+	});
+});
+
+describe("isUniformBitmap", () => {
+	const filled = (width: number, height: number, value: number) => new Uint8Array(width * height * 4).fill(value);
+
+	it("全黑、全白都算纯色", () => {
+		expect(isUniformBitmap(filled(30, 20, 0), 30, 20)).toBe(true);
+		expect(isUniformBitmap(filled(30, 20, 255), 30, 20)).toBe(true);
+	});
+
+	it("角落一个像素不同就不算", () => {
+		const data = filled(30, 20, 0);
+		data[((20 - 1) * 30 + (30 - 1)) * 4 + 1] = 9;
+		expect(isUniformBitmap(data, 30, 20)).toBe(false);
+	});
+
+	it("采样步长不会漏掉最后一行一列", () => {
+		const data = filled(10, 10, 0);
+		data[(9 * 10 + 9) * 4] = 1;
+		expect(isUniformBitmap(data, 10, 10, 7)).toBe(false);
+		const data2 = filled(10, 10, 0);
+		data2[(0 * 10 + 9) * 4] = 1;
+		expect(isUniformBitmap(data2, 10, 10, 7)).toBe(false);
+	});
+
+	it("尺寸不对视为无效", () => {
+		expect(isUniformBitmap(new Uint8Array(8), 4, 4)).toBe(true);
 	});
 });

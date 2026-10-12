@@ -24,7 +24,7 @@ import {
 	type NativeImage,
 } from "electron";
 import { ScreenCapturer, type CaptureFrame } from "./capture";
-import { CaptureAgent } from "./captureAgent";
+import { CaptureAgent, type ScrollAgent } from "./captureAgent";
 import { toDevicePixelRect } from "./cropRect";
 import { devPermissionHost, readDevOptions } from "./devOptions";
 import { diagnosticsDir, initDiagnostics, serializeError, writeDiagnostic } from "./diagnostics";
@@ -60,11 +60,12 @@ import { OnboardingController } from "./onboarding";
 import { ONBOARDING_VERSION, relaunchStepFromArgs } from "./onboardingRules";
 import { PinManager } from "./pins";
 import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
-import { supportsScrollCapture } from "./scrollCapture";
+import { supportsCaptureExclusion, supportsScrollCapture } from "./scrollCapture";
 import { ScrollCaptureController } from "./scrollSession";
 import { findSensitiveRegions, type Identity } from "./sensitiveText";
 import { isSelectionMode, loadSettings, saveSettings } from "./settings";
-import { WindowListHelper } from "./windowList";
+import { WindowsHelper } from "./windowsHelper";
+import { WindowsScrollAgent } from "./windowsScrollAgent";
 import { toDisplayLocalPoint, toDisplayLocalWindows, type RawWindow } from "./windowRects";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,8 +150,26 @@ function createCaptureAgent(): CaptureAgent | null {
 	return executable ? new CaptureAgent(executable, writeDiagnostic) : null;
 }
 const captureAgent = devOptions.captureFile ? null : createCaptureAgent();
-const scrollAgent = captureAgent ?? (devOptions.scrollFixture ? createCaptureAgent() : null);
-const capturer = new ScreenCapturer({ agent: captureAgent, fixtureFile: devOptions.captureFile });
+/** Windows 上的常驻助手：窗口枚举、单独截取窗口、滚动截图的连续截屏。 */
+const windowsHelper = new WindowsHelper();
+/** 滚动截图的"截图进程"：macOS 上就是截图进程本身，Windows 上由助手进程加拼接线程拼出同样的协议。 */
+function createScrollAgent(): ScrollAgent | null {
+	if (process.platform === "darwin") return captureAgent ?? (devOptions.scrollFixture ? createCaptureAgent() : null);
+	if (process.platform === "win32") {
+		return new WindowsScrollAgent({
+			helper: windowsHelper,
+			workerFile: path.join(__dirname, "scrollWorker.js"),
+			diagnostic: writeDiagnostic,
+		});
+	}
+	return null;
+}
+const scrollAgent = createScrollAgent();
+const capturer = new ScreenCapturer({
+	agent: captureAgent,
+	fixtureFile: devOptions.captureFile,
+	windowCapture: process.platform === "win32" ? (hwnd, pngPath) => windowsHelper.captureWindow(hwnd, pngPath) : null,
+});
 
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -167,7 +186,6 @@ let previewImage: NativeImage | null = null;
 /** "再截一张"得到的图片，等编辑窗口来取。 */
 let pendingStitch: NativeImage | null = null;
 
-const windowLister = new WindowListHelper();
 const pins = new PinManager((options) => createWindow("screenshot-pin", options), () => refreshTrayMenu());
 
 const onboarding = new OnboardingController({
@@ -205,6 +223,7 @@ const scroll = scrollAgent
 			onDone: (image) => finishScrollSession(image),
 			fixture: devOptions.scrollFixture,
 			shortcutsEnabled: devOptions.shortcutEnabled,
+			excludeFromCapture: supportsCaptureExclusion(process.platform, process.getSystemVersion()),
 		})
 	: null;
 
@@ -514,7 +533,7 @@ function deliverStitch(target: BrowserWindow | null, image: NativeImage) {
 function listWindows(): Promise<RawWindow[]> {
 	// 夹具图片不是真实屏幕，识别出的窗口也对不上
 	if (capturer.usesFixture) return Promise.resolve([]);
-	return process.platform === "darwin" ? listMacWindows(process.pid, captureAgent) : windowLister.list(process.pid);
+	return process.platform === "darwin" ? listMacWindows(process.pid, captureAgent) : windowsHelper.list(process.pid);
 }
 
 /** screenToDipRect 只在 Windows / Linux 上有；macOS 的窗口坐标本来就是 DIP。 */
@@ -541,7 +560,7 @@ function promptScreenPermission(reason: string) {
 	onboarding.open("permission", reason);
 }
 
-/** 滚动截图需要截图进程和 macOS 14 起的 ScreenCaptureKit；开发用的滚动夹具不受系统版本限制。 */
+/** 滚动截图需要截图进程 / 助手，以及 macOS 14 或 Windows 10 起的系统；开发用的滚动夹具不受系统版本限制。 */
 function scrollAvailable() {
 	if (!scroll) return false;
 	return !!devOptions.scrollFixture || supportsScrollCapture(process.platform, process.getSystemVersion());
@@ -1356,15 +1375,26 @@ function formatShortcutForDialog(accelerator: string) {
 /**
  * macOS 上输入框里的 ⌘C / ⌘V / ⌘A、⌘W 关窗口、⌘Q 退出都靠应用菜单。默认菜单里还有“重新加载”和
  * 页面缩放（⌘0 / ⌘= / ⌘-，会抢走编辑器的缩放快捷键），所以换成精简的菜单；开发时保留开发者工具。
+ * Windows / Linux 上所有窗口都是无边框，菜单栏本来就不显示，但 Electron 默认菜单的加速键仍然生效
+ * （Ctrl+R 会重新加载编辑器、丢掉没保存的标注，正式版里 Ctrl+Shift+I 能打开开发者工具），
+ * 所以正式版干脆不设菜单，开发时只留重新加载和开发者工具。
  */
-function setMacAppMenu() {
+function setAppMenu() {
+	const developer: Electron.MenuItemConstructorOptions = {
+		label: "Developer",
+		submenu: [{ role: "reload" }, { role: "toggleDevTools" }],
+	};
+	if (process.platform !== "darwin") {
+		Menu.setApplicationMenu(VITE_DEV_SERVER_URL ? Menu.buildFromTemplate([developer]) : null);
+		return;
+	}
 	const template: Electron.MenuItemConstructorOptions[] = [
 		{ role: "appMenu" },
 		{ role: "fileMenu" },
 		{ role: "editMenu" },
 		{ role: "windowMenu" },
 	];
-	if (VITE_DEV_SERVER_URL) template.push({ label: "Developer", submenu: [{ role: "reload" }, { role: "toggleDevTools" }] });
+	if (VITE_DEV_SERVER_URL) template.push(developer);
 	Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
@@ -1469,7 +1499,7 @@ if (!app.requestSingleInstanceLock()) {
 	app.on("will-quit", () => {
 		globalShortcut.unregisterAll();
 		stopWatching?.();
-		windowLister.dispose();
+		windowsHelper.dispose();
 		capturer.cancelInteractive();
 		scroll?.cancel("quit");
 		captureAgent?.stop();
@@ -1490,10 +1520,8 @@ if (!app.requestSingleInstanceLock()) {
 			fixture: capturer.usesFixture,
 			devHost: devHost?.bundleId ?? devHost?.name ?? null,
 		});
-		if (process.platform === "darwin") {
-			app.dock?.hide();
-			setMacAppMenu();
-		}
+		if (process.platform === "darwin") app.dock?.hide();
+		setAppMenu();
 		if (process.platform === "win32") app.setAppUserModelId(APP_ID);
 		// 渲染进程不需要摄像头、麦克风、通知等任何浏览器权限，一律拒绝
 		session.defaultSession.setPermissionCheckHandler(() => false);
@@ -1515,7 +1543,7 @@ if (!app.requestSingleInstanceLock()) {
 		syncShortcut("app-ready");
 		startWatching();
 		// Windows 的窗口枚举进程启动要一两秒，提前拉起来；macOS 上用常驻的截图进程，下面预热
-		windowLister.start();
+		windowsHelper.start();
 		warmCaptureAgent("app-ready");
 		// 提前创建并加载好选区窗口，第一次截图也不用等页面加载
 		getRegionWindow();

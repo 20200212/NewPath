@@ -42,9 +42,9 @@ describe("readDevOptions", () => {
 			APP_DATA,
 		);
 		expect(options).toEqual({
-			userDataDir: "/tmp/newpath-dev",
-			captureFile: "/tmp/screen.png",
-			scrollFixture: "/tmp/tall.png",
+			userDataDir: path.resolve("/tmp/newpath-dev"),
+			captureFile: path.resolve("/tmp/screen.png"),
+			scrollFixture: path.resolve("/tmp/tall.png"),
 			shortcutEnabled: false,
 			remoteDebuggingPort: "9222",
 			settingsBundle: "com.apple.TextEdit",

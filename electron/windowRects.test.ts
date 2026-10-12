@@ -19,14 +19,18 @@ describe("windowRects", () => {
 		expect(parseRawWindows("{}")).toEqual([]);
 	});
 
-	it("保留 macOS 的窗口编号，丢掉不合法的编号", () => {
+	it("保留窗口编号（macOS 的 CGWindowID、Windows 的 HWND），丢掉不合法的编号", () => {
 		expect(
 			normalizeRawWindows([
 				{ id: 4821, x: 0, y: 0, width: 100, height: 80, title: "访达" },
+				{ id: 1313580, x: 0, y: 0, width: 100, height: 80, title: "记事本" },
+				{ id: 2 ** 31 + 65538, x: 0, y: 0, width: 100, height: 80, title: "64 位句柄" },
 				{ id: 1.5, x: 0, y: 0, width: 100, height: 80, title: "小数" },
+				{ id: 0, x: 0, y: 0, width: 100, height: 80, title: "零" },
+				{ id: -3, x: 0, y: 0, width: 100, height: 80, title: "负数" },
 				{ id: "7", x: 0, y: 0, width: 100, height: 80, title: "字符串" },
 			]).map((window) => window.id),
-		).toEqual([4821, undefined, undefined]);
+		).toEqual([4821, 1313580, 2 ** 31 + 65538, undefined, undefined, undefined, undefined]);
 		const [local] = toDisplayLocalWindows(
 			[{ id: 4821, x: 10, y: 10, width: 100, height: 80, title: "访达" }],
 			{ x: 0, y: 0, width: 1440, height: 900 },

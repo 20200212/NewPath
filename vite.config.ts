@@ -7,7 +7,13 @@ export default defineConfig((env) =>
 	mergeConfig(rendererConfig(env), {
 		plugins: [
 			electron({
-				main: { entry: fileURLToPath(new URL("./electron/main.ts", import.meta.url)) },
+				main: {
+					entry: {
+						main: fileURLToPath(new URL("./electron/main.ts", import.meta.url)),
+						// 滚动截图的拼接线程（Windows），单独一个入口，主进程以 data: URL 启动它
+						scrollWorker: fileURLToPath(new URL("./electron/scrollWorker.ts", import.meta.url)),
+					},
+				},
 				preload: { input: fileURLToPath(new URL("./electron/preload.ts", import.meta.url)) },
 			}),
 		],

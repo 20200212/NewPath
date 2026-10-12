@@ -5,7 +5,13 @@ import path from "node:path";
 import { desktopCapturer, nativeImage, type Display, type NativeImage, type Rectangle } from "electron";
 import type { AgentResponse, CaptureAgent } from "./captureAgent";
 import { serializeError, writeDiagnostic } from "./diagnostics";
-import { findOpaqueBounds, interactiveCaptureArguments, regionCaptureArguments, windowCaptureArguments } from "./windowCapture";
+import {
+	findOpaqueBounds,
+	interactiveCaptureArguments,
+	isUniformBitmap,
+	regionCaptureArguments,
+	windowCaptureArguments,
+} from "./windowCapture";
 
 const SCREENCAPTURE = "/usr/sbin/screencapture";
 const AGENT_DISPLAY_TIMEOUT_MS = 1500;
@@ -76,6 +82,8 @@ interface CapturerOptions {
 	agent: CaptureAgent | null;
 	/** 开发模式下代替屏幕的 PNG（NEWPATH_DEV_CAPTURE_FILE）。 */
 	fixtureFile: string | null;
+	/** Windows 上按 HWND 把窗口单独截成 PNG（助手进程的 PrintWindow）；其他平台为 null。 */
+	windowCapture: ((hwnd: number, pngPath: string) => Promise<{ width: number; height: number } | null>) | null;
 }
 
 /**
@@ -201,11 +209,14 @@ export class ScreenCapturer {
 	}
 
 	/**
-	 * 按窗口编号（CGWindowID）单独截一个窗口：被其他窗口挡住的部分也完整，带透明圆角、不带阴影，裁到可见像素。
-	 * 只在 macOS 上可用；窗口已经关掉（比如选区窗口抢走焦点后消失的菜单）时返回 null，调用方退回按选区裁剪。
+	 * 按窗口编号（macOS 的 CGWindowID、Windows 的 HWND）单独截一个窗口：被其他窗口挡住的部分也完整，
+	 * macOS 上带透明圆角、不带阴影，裁到可见像素。窗口已经关掉（比如选区窗口抢走焦点后消失的菜单）或
+	 * 截不出有效内容时返回 null，调用方退回按选区裁剪。Linux 不支持。
 	 */
 	async captureWindow(windowId: number): Promise<NativeImage | null> {
-		if (process.platform !== "darwin" || this.options.fixtureFile) return null;
+		if (this.options.fixtureFile) return null;
+		if (process.platform === "win32") return this.captureWindowWithHelper(windowId);
+		if (process.platform !== "darwin") return null;
 		const startedAt = Date.now();
 		const fromAgent = await this.agentRequest({ cmd: "window", window: windowId }, "png", AGENT_WINDOW_TIMEOUT_MS);
 		const agentImage = fromAgent ? readImage(fromAgent.bytes) : null;
@@ -227,6 +238,42 @@ export class ScreenCapturer {
 			return trimmed;
 		} catch (error) {
 			writeDiagnostic("window-capture-failed", { error: serializeError(error) });
+			return null;
+		} finally {
+			await fs.unlink(filePath).catch(() => {});
+		}
+	}
+
+	/**
+	 * Windows：助手进程用 PrintWindow 让窗口自己画一遍。有些用 DirectComposition 绘制的窗口会得到一张纯色图，
+	 * 那样的结果没有意义，当作失败。
+	 */
+	private async captureWindowWithHelper(hwnd: number): Promise<NativeImage | null> {
+		const capture = this.options.windowCapture;
+		if (!capture) return null;
+		const startedAt = Date.now();
+		const filePath = temporaryPath("window", "png");
+		try {
+			const size = await capture(hwnd, filePath);
+			if (!size) {
+				writeDiagnostic("window-capture-failed", { via: "printwindow", reason: "helper" });
+				return null;
+			}
+			const image = readImage(await fs.readFile(filePath));
+			if (!image) throw new Error("窗口截图是空的");
+			const { width, height } = image.getSize();
+			const bitmap = image.toBitmap();
+			if (isUniformBitmap(bitmap, width, height)) {
+				writeDiagnostic("window-capture-failed", { via: "printwindow", reason: "uniform" });
+				return null;
+			}
+			const bounds = findOpaqueBounds(bitmap, width, height);
+			if (!bounds) throw new Error("窗口截图是全透明的");
+			const trimmed = bounds.width === width && bounds.height === height ? image : image.crop(bounds);
+			writeDiagnostic("window-capture", { via: "printwindow", ms: Date.now() - startedAt, ...bounds });
+			return trimmed;
+		} catch (error) {
+			writeDiagnostic("window-capture-failed", { via: "printwindow", error: serializeError(error) });
 			return null;
 		} finally {
 			await fs.unlink(filePath).catch(() => {});

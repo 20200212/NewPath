@@ -1,7 +1,7 @@
 import type { AgentEvent } from "./captureAgent";
 import type { Rect, ScrollStatus } from "./ipcTypes";
 
-// 滚动截图（macOS 14 起）用到的纯函数。截图进程负责连续截取选区并拼接，
+// 滚动截图（macOS 14 起、Windows 10 起）用到的纯函数。截图进程 / 助手负责连续截取选区并拼接，
 // 主进程在选区旁边放一个进度面板、四周画一圈彩色边框，完成后把长图交给编辑器。
 // 移植自 QuickShot（GPL-3.0-or-later，https://github.com/cclank/quickshot）的 electron/scrollCapture.ts。
 
@@ -222,8 +222,20 @@ export function parseScrollProgress(event: AgentEvent): ScrollProgress | null {
 	};
 }
 
-/** 滚动截图只能在 macOS 14 起使用（ScreenCaptureKit 的截图接口）；systemVersion 形如 "14.5.0"。 */
+/**
+ * 滚动截图在 macOS 14 起（ScreenCaptureKit 的截图接口）和 Windows 10 起（助手进程用 GDI 连续截屏）可用；
+ * systemVersion 形如 "14.5.0" 或 "10.0.19045"。
+ */
 export function supportsScrollCapture(platform: string, systemVersion: string) {
-	if (platform !== "darwin") return false;
-	return Number.parseInt(systemVersion.split(".")[0] ?? "", 10) >= 14;
+	const major = Number.parseInt(systemVersion.split(".")[0] ?? "", 10);
+	if (platform === "darwin") return major >= 14;
+	if (platform === "win32") return major >= 10;
+	return false;
+}
+
+/** Windows 10 2004（build 19041）起窗口可以从屏幕采集里排除（WDA_EXCLUDEFROMCAPTURE），更老的系统会变成黑块。 */
+export function supportsCaptureExclusion(platform: string, systemVersion: string) {
+	if (platform !== "win32") return false;
+	const [major, , build] = systemVersion.split(".").map((part) => Number.parseInt(part, 10));
+	return major > 10 || (major === 10 && (build ?? 0) >= 19041);
 }

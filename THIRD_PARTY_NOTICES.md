@@ -17,6 +17,7 @@ NewPath 的 macOS 部分移植或改写自 QuickShot：
 |---|---|
 | `native/newpath-capture-agent/`（常驻截图进程、滚动截图、拼接）：沿用它的命令和字段设计，Swift 代码按这套协议重新编写，错误码改为连字符形式 | `native/quickshot-capture-agent/` |
 | `native/newpath-capture-agent/ScrollStitcher.swift`、`tests/main.swift`：按原样移植，只改了注释和命名，测试另加了几项检查；`ScrollCapture.swift` 的拼接、预览部分照它对齐 | `native/quickshot-capture-agent/ScrollStitcher.swift`、`tests/main.swift`、`ScrollCapture.swift` |
+| `electron/scrollStitcher.ts`、`electron/scrollStitcher.test.ts`（Windows 滚动截图的拼接）：同一套算法和测试用 TypeScript 重新实现；`electron/scrollWorker.ts`、`electron/scrollPreview.ts`、`electron/scrollFixture.ts` 的状态上报、预览、开发夹具时间线照 `ScrollCapture.swift` 对齐 | `native/quickshot-capture-agent/ScrollStitcher.swift`、`tests/main.swift`、`ScrollCapture.swift` |
 | `native/newpath-window-list/WindowList.swift` 的部分过滤规则 | `native/quickshot-window-list/WindowList.swift` |
 | `electron/captureAgent.ts` | `electron/captureAgent.ts` |
 | `electron/scrollCapture.ts`、`electron/scrollSession.ts` | `electron/scrollCapture.ts` 及 `electron/main.ts` 里的滚动截图部分 |

@@ -9,6 +9,7 @@ import {
 	scrollMaxHeight,
 	scrollRegionFromSelection,
 	scrollRingLayout,
+	supportsCaptureExclusion,
 	supportsScrollCapture,
 } from "./scrollCapture";
 
@@ -149,6 +150,16 @@ describe("滚动截图的系统要求", () => {
 		expect(supportsScrollCapture("darwin", "14.0.0")).toBe(true);
 		expect(supportsScrollCapture("darwin", "26.6.2")).toBe(true);
 		expect(supportsScrollCapture("darwin", "13.6.1")).toBe(false);
-		expect(supportsScrollCapture("win32", "10.0.22631")).toBe(false);
+		expect(supportsScrollCapture("win32", "10.0.22631")).toBe(true);
+		expect(supportsScrollCapture("win32", "10.0.19045")).toBe(true);
+		expect(supportsScrollCapture("win32", "6.3.9600")).toBe(false);
+		expect(supportsScrollCapture("linux", "6.8.0")).toBe(false);
+	});
+
+	it("Windows 10 2004 起才能把自己的窗口从采集里排除", () => {
+		expect(supportsCaptureExclusion("win32", "10.0.19041")).toBe(true);
+		expect(supportsCaptureExclusion("win32", "10.0.22631")).toBe(true);
+		expect(supportsCaptureExclusion("win32", "10.0.18363")).toBe(false);
+		expect(supportsCaptureExclusion("darwin", "14.0.0")).toBe(false);
 	});
 });

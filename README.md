@@ -41,7 +41,9 @@ electron/                 主进程（Node.js 环境）
   library.ts              截图库：列目录、文件名校验、写入、目录监听
   capture.ts              用 desktopCapturer 截取整块显示器
   cropRect.ts             CSS 像素选区 → 物理像素裁剪区域
-  windowList.ts           常驻 PowerShell 进程枚举可见窗口（Windows，用于悬停识别）
+  windowsHelper.ts        常驻 PowerShell 进程（Windows）：枚举可见窗口、PrintWindow 单独截取窗口、BitBlt 连续截屏
+  scrollStitcher.ts       滚动截图的拼接算法（TypeScript，Windows 用；macOS 用 Swift 版）
+  windowsScrollAgent.ts   Windows 的滚动截图“截图进程”：助手进程 + worker_threads 拼接线程，对外同 macOS 的协议
   macWindowList.ts        调用 native/newpath-window-list 枚举可见窗口（macOS）
   windowRects.ts          窗口矩形：全局坐标 → 选区窗口内的 CSS 像素
   pins.ts / pinGeometry.ts  钉图窗口的管理和缩放、定位
@@ -106,6 +108,6 @@ public/trayTemplate*.png  macOS 菜单栏用的单色模板图标
 - [ ] 背景美化：渐变 / 壁纸、内边距、圆角、阴影
 - [x] 主界面（截图库）、自定义截图快捷键、自定义保存目录
 - [ ] 设置：开机自启、中英文界面
-- [ ] 长截图
+- [x] 长截图（滚动截图：macOS 14 起、Windows 10 起）
 
 > QuickShot 使用 GPL-3.0 协议。本项目参考了它的技术选型、目录结构和实现思路（如 macOS 上用 Swift 小工具调用系统框架、用固定证书签名保留屏幕录制权限），代码是独立编写的。如果以后直接复用它的源码，本项目也需要遵守 GPL-3.0。
