@@ -53,4 +53,4 @@ npm run build:native                          # 编译 macOS 的 Swift 小工具
 - 语言切换：设置里存 `language`（`system` 或具体语言），主进程用 `resolveLocale` 算出实际语言；新窗口通过 `?lang=` 拿到初始语言，切换时主进程向所有窗口推送 `locale:changed`，渲染进程再调用 `getLocale()` 拉取。
 - 开机自启以系统登录项为准（`app.getLoginItemSettings`），不写进 `settings.json`；Windows 上登录项带 `--hidden` 参数，启动时据此只驻留托盘；macOS 的登录项不支持参数，`launchedAtLogin()` 用 `wasOpenedAtLogin` 加“开了自启且系统刚启动”判断。开发模式和 Linux 下不支持。
 - 新增窗口类型：在 `main.ts` 的 `WindowType` 联合类型中添加，并在 `App.tsx` 里加对应分支。
-- 许可证：QuickShot 是 GPL-3.0，本项目只参考其选型，不要从中复制代码。
+- 许可证：本项目以 GPL-3.0-or-later 发布（见 `LICENSE`）。macOS 的截图进程、滚动截图、欢迎引导、签名安装脚本等移植自 QuickShot（同为 GPL-3.0-or-later），可以继续参考或移植它的代码，但要在 `THIRD_PARTY_NOTICES.md` 里登记来源，注释改成中文。

@@ -1,6 +1,6 @@
-import { CircleAlert, Keyboard, Settings, SlidersHorizontal } from "lucide-react";
+import { CircleAlert, CircleCheck, Keyboard, Settings, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ActionResult, LanguageSetting, Locale, SettingsState } from "../../../electron/ipcTypes";
+import type { ActionResult, LanguageSetting, Locale, SelectionMode, SettingsState } from "../../../electron/ipcTypes";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
@@ -16,6 +16,10 @@ interface SettingsModalProps {
 	onRecordingChange: (recording: boolean) => void;
 	onChangeLanguage: (language: LanguageSetting) => void;
 	onChangeOpenAtLogin: (enabled: boolean) => void;
+	/** 只在 macOS 上显示。 */
+	onChangeSelectionMode: (mode: SelectionMode) => void;
+	onOpenOnboarding: () => void;
+	onOpenLogs: () => void;
 }
 
 /** 语言名始终用该语言自身的写法，不随界面语言翻译。 */
@@ -55,8 +59,17 @@ export function SettingsModal({
 	onRecordingChange,
 	onChangeLanguage,
 	onChangeOpenAtLogin,
+	onChangeSelectionMode,
+	onOpenOnboarding,
+	onOpenLogs,
 }: SettingsModalProps) {
 	const { t } = useI18n();
+	const text = t.main.settings;
+	const selectionOptions: { value: SelectionMode; label: string }[] = [
+		{ value: "overlay", label: text.selectionOverlay },
+		{ value: "system", label: text.selectionSystem },
+	];
+	const permissionGranted = settings.screenPermission === "granted";
 	const languageOptions: { value: LanguageSetting; label: string }[] = [
 		{ value: "system", label: t.main.settings.languageSystem },
 		...(Object.keys(LANGUAGE_NAMES) as Locale[]).map((locale) => ({ value: locale, label: LANGUAGE_NAMES[locale] })),
@@ -98,6 +111,23 @@ export function SettingsModal({
 								onChange={onChangeOpenAtLogin}
 							/>
 						</SettingRow>
+						{mac && (
+							<SettingRow
+								label={text.selectionMode}
+								note={
+									settings.selectionMode === "system" && (
+										<p className="mt-1 text-xs font-medium leading-relaxed text-gray-400">{text.selectionSystemNote}</p>
+									)
+								}
+							>
+								<Select
+									aria-label={text.selectionMode}
+									value={settings.selectionMode}
+									options={selectionOptions}
+									onChange={onChangeSelectionMode}
+								/>
+							</SettingRow>
+						)}
 					</div>
 				</section>
 
@@ -120,6 +150,42 @@ export function SettingsModal({
 							onRecordingChange={onRecordingChange}
 						/>
 					</SettingRow>
+				</section>
+
+				<section>
+					<SectionTitle icon={<ShieldCheck size={16} />}>{text.diagnostics}</SectionTitle>
+					<div className="space-y-3">
+						{mac && (
+							<SettingRow
+								label={text.screenPermission}
+								note={
+									<p
+										className={`mt-1 flex items-center gap-1 text-xs font-bold ${permissionGranted ? "text-apple-green" : "text-apple-orange"}`}
+									>
+										{permissionGranted ? <CircleCheck size={12} /> : <CircleAlert size={12} />}
+										{permissionGranted ? text.permissionGranted : text.permissionMissing}
+									</p>
+								}
+							>
+								<Button variant={permissionGranted ? "secondary" : "primary"} size="sm" onClick={onOpenOnboarding}>
+									{permissionGranted ? text.permissionCheck : text.permissionFix}
+								</Button>
+							</SettingRow>
+						)}
+						<SettingRow
+							label={text.onboarding}
+							note={<p className="mt-1 text-xs font-medium text-gray-400">{text.onboardingNote}</p>}
+						>
+							<Button variant="secondary" size="sm" onClick={onOpenOnboarding}>
+								{text.openOnboarding}
+							</Button>
+						</SettingRow>
+						<SettingRow label={text.logs} note={<p className="mt-1 text-xs font-medium text-gray-400">{text.logsNote}</p>}>
+							<Button variant="secondary" size="sm" onClick={onOpenLogs}>
+								{text.openLogs}
+							</Button>
+						</SettingRow>
+					</div>
 				</section>
 			</div>
 		</Modal>

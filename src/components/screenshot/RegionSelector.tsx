@@ -1,4 +1,4 @@
-import { Copy, Download, ImagePlus, Link, Pencil, Pin, X, type LucideIcon } from "lucide-react";
+import { Copy, Download, ImagePlus, Link, Pencil, Pin, ScrollText, X, type LucideIcon } from "lucide-react";
 import {
 	useCallback,
 	useEffect,
@@ -11,6 +11,7 @@ import {
 import type { CaptureAction, CaptureMode, DetectedWindow } from "../../../electron/ipcTypes";
 import { useI18n } from "@/i18n";
 import { createMockScreenshot, createMockWindows } from "@/lib/mockImage";
+import { appShortcut } from "@/lib/platform";
 import {
 	containsPoint,
 	findWindowAt,
@@ -57,6 +58,9 @@ interface LoadedSession {
 	imageUrl: string;
 	scaleFactor: number;
 	mode: CaptureMode;
+	scrollAvailable: boolean;
+	/** 一开始就处在滚动截图模式。 */
+	scrollMode: boolean;
 }
 
 /** 解码完成后再显示，保证第一帧就是完整的截图。 */
@@ -66,7 +70,16 @@ async function decodeImage(url: string) {
 	await image.decode();
 }
 
-/** 全屏选区窗口：背景是冻结的屏幕画面，悬停高亮窗口、单击选中，或拖拽选择区域。 */
+/** 单击选中的窗口：选区还是这个对象（没有移动、缩放或重画）时，结束截图可以带上 windowId。 */
+interface PickedWindow {
+	id: number;
+	rect: Rect;
+}
+
+/**
+ * 全屏选区窗口：背景是冻结的屏幕画面，悬停高亮窗口、单击选中，或拖拽选择区域。
+ * 支持滚动截图时按 S 切换到滚动截图模式：选好区域后只能开始滚动截图。
+ */
 export function RegionSelector() {
 	const api = window.electronAPI;
 	const { t } = useI18n();
@@ -76,6 +89,8 @@ export function RegionSelector() {
 	/** 截图时屏幕上的窗口；null 表示还没收到列表，这时不做悬停高亮。 */
 	const [windows, setWindows] = useState<DetectedWindow[] | null>(null);
 	const [hover, setHover] = useState<DetectedWindow | null>(null);
+	const [scrollMode, setScrollMode] = useState(false);
+	const pickedRef = useRef<PickedWindow | null>(null);
 	const dragRef = useRef<Drag | null>(null);
 	const [dragging, setDragging] = useState(false);
 	const sessionIdRef = useRef(0);
@@ -96,12 +111,18 @@ export function RegionSelector() {
 	// 窗口常驻复用：每次截图开始或结束时同步一次会话
 	useEffect(() => {
 		if (!api) {
+			// dev:ui：?mode=stitch 拼接模式，?scroll=1 支持滚动截图，?scroll=mode 一开始就处在滚动截图模式
+			const query = new URLSearchParams(window.location.search);
+			const scroll = query.get("scroll");
 			setSession({
 				id: 0,
 				imageUrl: createMockScreenshot(window.innerWidth, window.innerHeight),
 				scaleFactor: window.devicePixelRatio,
-				mode: new URLSearchParams(window.location.search).get("mode") === "stitch" ? "stitch" : "capture",
+				mode: query.get("mode") === "stitch" ? "stitch" : "capture",
+				scrollAvailable: scroll !== null,
+				scrollMode: scroll === "mode",
 			});
+			setScrollMode(scroll === "mode");
 			setWindows(createMockWindows(window.innerWidth, window.innerHeight));
 			return;
 		}
@@ -116,8 +137,10 @@ export function RegionSelector() {
 				dragRef.current = null;
 				setDragging(false);
 				setSelection(null);
+				pickedRef.current = null;
 				setWindows(null);
 				setHover(null);
+				setScrollMode(false);
 				setSession(null);
 				return;
 			}
@@ -138,9 +161,18 @@ export function RegionSelector() {
 			dragRef.current = null;
 			setDragging(false);
 			setSelection(null);
+			pickedRef.current = null;
 			setWindows(null);
 			setHover(null);
-			setSession({ id: info.id, imageUrl, scaleFactor: info.scaleFactor, mode: info.mode });
+			setScrollMode(info.scrollAvailable && info.scrollMode);
+			setSession({
+				id: info.id,
+				imageUrl,
+				scaleFactor: info.scaleFactor,
+				mode: info.mode,
+				scrollAvailable: info.scrollAvailable,
+				scrollMode: info.scrollMode,
+			});
 		};
 		void sync();
 		const unsubscribe = api.onCaptureChanged(() => void sync());
@@ -181,6 +213,14 @@ export function RegionSelector() {
 
 	const bounds = { width: window.innerWidth, height: window.innerHeight };
 	const stitching = session?.mode === "stitch";
+	const scrollAvailable = session?.scrollAvailable ?? false;
+	const scrolling = scrollAvailable && scrollMode;
+
+	/** 单击选中窗口：记下窗口编号，之后只要选区没再调整过就单独截取这个窗口。 */
+	const pickWindow = (target: DetectedWindow | null) => {
+		pickedRef.current = target?.id !== undefined ? { id: target.id, rect: target.rect } : null;
+		setSelection(target?.rect ?? null);
+	};
 
 	/** 光标下的窗口；没有命中任何窗口时就是整个屏幕。 */
 	const windowAt = (point: Point): DetectedWindow | null => {
@@ -194,7 +234,7 @@ export function RegionSelector() {
 		const pending = pendingClickRef.current;
 		if (pending) {
 			clearPendingClick();
-			setSelection(windowAt(pending.point)?.rect ?? null);
+			pickWindow(windowAt(pending.point));
 			return;
 		}
 		const point = pointerRef.current;
@@ -209,14 +249,21 @@ export function RegionSelector() {
 	const finish = useCallback(
 		(action: CaptureAction) => {
 			if (!selection || selection.width < 1 || selection.height < 1) return;
-			if (api) void api.finishCapture({ rect: selection, action });
-			else console.info("[dev:ui] finishCapture", action, selection);
+			// 滚动截图截的是选区里滚动的内容，不单独截窗口
+			const picked = pickedRef.current;
+			const windowId = action !== "scroll" && picked?.rect === selection ? picked.id : undefined;
+			const payload = windowId === undefined ? { rect: selection, action } : { rect: selection, action, windowId };
+			if (api) void api.finishCapture(payload);
+			else console.info("[dev:ui] finishCapture", payload);
 		},
 		[api, selection],
 	);
 
-	/** Enter / 双击的默认动作：普通截图复制图片，拼接模式加入拼接。 */
-	const confirm = useCallback(() => finish(stitching ? "stitch" : "copy"), [finish, stitching]);
+	/** Enter / 双击的默认动作：滚动截图模式下开始滚动截图，普通截图复制图片，拼接模式加入拼接。 */
+	const confirm = useCallback(
+		() => finish(scrolling ? "scroll" : stitching ? "stitch" : "copy"),
+		[finish, scrolling, stitching],
+	);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -224,7 +271,9 @@ export function RegionSelector() {
 			const key = event.key.toLowerCase();
 			if (event.key === "Escape") cancel();
 			else if (event.key === "Enter") confirm();
-			else if (stitching) return;
+			else if (key === "s" && !mod && !event.altKey && !event.shiftKey && scrollAvailable) {
+				if (!event.repeat) setScrollMode((current) => !current);
+			} else if (stitching || scrolling) return;
 			else if (mod && key === "c") finish("copy");
 			else if (mod && key === "s") {
 				event.preventDefault();
@@ -233,7 +282,7 @@ export function RegionSelector() {
 		};
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [cancel, confirm, finish, stitching]);
+	}, [cancel, confirm, finish, scrollAvailable, scrolling, stitching]);
 
 	const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) return;
@@ -280,11 +329,11 @@ export function RegionSelector() {
 		// 单击（没有拖拽）：选中光标下的窗口；还没收到窗口列表时先记下来，等列表到了再选，超时就截取整个屏幕
 		if (drag?.kind === "draw" && isClick(drag.start, point)) {
 			setHover(null);
-			if (windows) setSelection(windowAt(point)?.rect ?? null);
+			if (windows) pickWindow(windowAt(point));
 			else {
 				const timer = window.setTimeout(() => {
 					pendingClickRef.current = null;
-					setSelection({ x: 0, y: 0, ...bounds });
+					pickWindow({ title: "", rect: { x: 0, y: 0, ...bounds } });
 				}, PENDING_CLICK_TIMEOUT_MS);
 				pendingClickRef.current = { point, timer };
 			}
@@ -365,7 +414,8 @@ export function RegionSelector() {
 
 			{!selection && (
 				<p className="pointer-events-none absolute left-1/2 top-8 -translate-x-1/2 rounded-2xl border border-white/10 bg-[#1C1C1E]/85 px-5 py-2.5 text-sm font-bold tracking-wide text-white shadow-2xl backdrop-blur-md">
-					{stitching ? text.hintStitch : text.hintCapture} · {text.hintEsc}
+					{scrolling ? text.hintScroll : stitching ? text.hintStitch : text.hintCapture}
+					{scrollAvailable && ` · ${scrolling ? text.hintScrollExit : text.hintScrollKey}`} · {text.hintEsc}
 				</p>
 			)}
 
@@ -382,18 +432,34 @@ export function RegionSelector() {
 					onPointerDown={(event) => event.stopPropagation()}
 					onDoubleClick={(event) => event.stopPropagation()}
 				>
-					{stitching ? (
+					{scrolling ? (
 						<>
-							<ToolbarButton icon={ImagePlus} label={text.addToStitch} hint="Enter" onClick={() => finish("stitch")} />
+							<ToolbarButton
+								icon={ScrollText}
+								label={text.startScroll}
+								hint={appShortcut("Enter")}
+								onClick={() => finish("scroll")}
+							/>
+							<ToolbarButton icon={X} label={text.cancel} hint="Esc" onClick={cancel} />
+						</>
+					) : stitching ? (
+						<>
+							<ToolbarButton icon={ImagePlus} label={text.addToStitch} hint={appShortcut("Enter")} onClick={() => finish("stitch")} />
+							{scrollAvailable && (
+								<ToolbarButton icon={ScrollText} label={text.scroll} onClick={() => finish("scroll")} />
+							)}
 							<ToolbarButton icon={X} label={text.cancel} hint="Esc" onClick={cancel} />
 						</>
 					) : (
 						<>
 							<ToolbarButton icon={Pencil} label={text.edit} onClick={() => finish("edit")} />
-							<ToolbarButton icon={Download} label={text.save} hint="Ctrl+S" onClick={() => finish("save")} />
+							<ToolbarButton icon={Download} label={text.save} hint={appShortcut("Ctrl+S")} onClick={() => finish("save")} />
 							<ToolbarButton icon={Link} label={text.copyPath} onClick={() => finish("copy-path")} />
-							<ToolbarButton icon={Copy} label={text.copyImage} hint="Enter" onClick={() => finish("copy")} />
+							<ToolbarButton icon={Copy} label={text.copyImage} hint={appShortcut("Enter")} onClick={() => finish("copy")} />
 							<ToolbarButton icon={Pin} label={text.pin} onClick={() => finish("pin")} />
+							{scrollAvailable && (
+								<ToolbarButton icon={ScrollText} label={text.scroll} onClick={() => finish("scroll")} />
+							)}
 							<ToolbarButton icon={X} label={text.cancel} hint="Esc" onClick={cancel} />
 						</>
 					)}

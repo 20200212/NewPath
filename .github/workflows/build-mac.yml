@@ -48,6 +48,19 @@ jobs:
             codesign -d -r- "$app" 2>&1 | tail -1
           done
 
+      # 用户的屏幕录制授权记在签名身份上，换了身份更新后就要重新授权。
+      # 配了证书时：两个架构都必须是证书签名（退回 ad-hoc 就失败）、身份一致；
+      # 仓库 Variables 里设置了 NEWPATH_RELEASE_REQUIREMENT 时还必须满足它。没配证书时 ad-hoc 包跳过检查。
+      - name: Check signing identity
+        shell: bash
+        env:
+          MAC_SIGNING: ${{ secrets.MAC_CERT_P12_BASE64 != '' }}
+          NEWPATH_RELEASE_REQUIREMENT: ${{ vars.NEWPATH_RELEASE_REQUIREMENT }}
+        run: |
+          args=()
+          if [ "$MAC_SIGNING" = "true" ]; then args+=(--expect-certificate); fi
+          node scripts/check-mac-signature.mjs "${args[@]}" release/*/mac*/NewPath.app
+
       - uses: actions/upload-artifact@v4
         with:
           name: NewPath-macOS

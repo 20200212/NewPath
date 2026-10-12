@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,7 +13,9 @@ import {
 	Menu,
 	nativeImage,
 	Notification,
+	powerMonitor,
 	screen,
+	session,
 	shell,
 	systemPreferences,
 	Tray,
@@ -20,8 +23,11 @@ import {
 	type IpcMainInvokeEvent,
 	type NativeImage,
 } from "electron";
-import { captureDisplay } from "./capture";
+import { ScreenCapturer, type CaptureFrame } from "./capture";
+import { CaptureAgent } from "./captureAgent";
 import { toDevicePixelRect } from "./cropRect";
+import { devPermissionHost, readDevOptions } from "./devOptions";
+import { diagnosticsDir, initDiagnostics, serializeError, writeDiagnostic } from "./diagnostics";
 import type {
 	ActionResult,
 	AppSettings,
@@ -31,25 +37,33 @@ import type {
 	CaptureSessionInfo,
 	CaptureWindowsInfo,
 	DetectedWindow,
+	DevPermissionInfo,
 	Locale,
 	OcrResult,
 	PinImageInfo,
 	Point,
 	Rect,
 	SaveResult,
+	ScreenPermission,
 	ScreenshotItem,
 	SensitiveResult,
 	SettingsState,
 } from "./ipcTypes";
 import { mt, setMainLocale } from "./i18n";
+import { launchCommandFromArgs, type LaunchCommand } from "./launchArgs";
 import { listScreenshots, resolveInDir, saveToLibrary, validateFileName, watchDir } from "./library";
 import { isLanguageSetting, resolveLocale } from "./locale";
 import { listMacWindows } from "./macWindowList";
+import { nativeHelperPath } from "./nativeHelpers";
 import { recognizeText } from "./ocr";
+import { OnboardingController } from "./onboarding";
+import { ONBOARDING_VERSION, relaunchStepFromArgs } from "./onboardingRules";
 import { PinManager } from "./pins";
 import { defaultScreenshotName, ensurePngExtension } from "./screenshotFiles";
+import { supportsScrollCapture } from "./scrollCapture";
+import { ScrollCaptureController } from "./scrollSession";
 import { findSensitiveRegions, type Identity } from "./sensitiveText";
-import { loadSettings, saveSettings } from "./settings";
+import { isSelectionMode, loadSettings, saveSettings } from "./settings";
 import { WindowListHelper } from "./windowList";
 import { toDisplayLocalPoint, toDisplayLocalWindows, type RawWindow } from "./windowRects";
 
@@ -63,31 +77,52 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(APP_ROOT, "public") : 
 
 const APP_ID = "com.newpath.screenshot";
 
+// 开发模式下的环境变量（见 devOptions.ts）；必须在申请单实例锁之前改好用户数据目录
+const devOptions = readDevOptions(process.env, app.isPackaged, app.getPath("appData"));
+if (devOptions.userDataDir) app.setPath("userData", devOptions.userDataDir);
+if (devOptions.remoteDebuggingPort) app.commandLine.appendSwitch("remote-debugging-port", devOptions.remoteDebuggingPort);
+/** 开发模式下屏幕录制权限的归属（从终端启动时记在终端上），打包后为 null。 */
+const devHost = app.isPackaged || process.platform !== "darwin" ? null : devPermissionHost(process.env);
+
 /** Windows 开机自启时带上这个参数，启动后只驻留托盘、不弹主界面。 */
 const HIDDEN_ARG = "--hidden";
 /** 开发模式下注册的会是裸的 electron.exe；Linux 上 Electron 不支持登录项。 */
 const OPEN_AT_LOGIN_SUPPORTED = app.isPackaged && process.platform !== "linux";
 /** macOS 上 Option+字母会打出特殊字符，按 Mac 的习惯用 ⌘ 组合。 */
 const DEFAULT_CAPTURE_SHORTCUT = process.platform === "darwin" ? "Command+Shift+X" : "Alt+C";
-/** 系统设置里“屏幕录制”那一页。 */
-const SCREEN_RECORDING_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+/** 系统设置里“菜单栏”那一页（macOS 26 起可以在这里隐藏菜单栏图标）。 */
+const MENU_BAR_SETTINGS_URL = "x-apple.systempreferences:com.apple.ControlCenter-Settings.extension";
+/** 状态栏图标是否显示记在这些用户默认值里；被系统隐藏后，新建图标时先把它们打开。 */
+const MENU_BAR_VISIBILITY_KEYS = ["NSStatusItem VisibleCC Item-0", "NSStatusItem Visible Item-0"];
 /** macOS 红绿灯按钮的位置，和渲染进程标题栏里留出的空位对齐（MainWindow 的 header、编辑器的 Toolbar）。 */
 const MAIN_TRAFFIC_LIGHTS = { x: 20, y: 38 };
 const PREVIEW_TRAFFIC_LIGHTS = { x: 18, y: 21 };
 
-type WindowType = "main" | "screenshot-region" | "screenshot-preview" | "screenshot-pin";
+type WindowType =
+	| "main"
+	| "screenshot-region"
+	| "screenshot-preview"
+	| "screenshot-pin"
+	| "onboarding"
+	| "permission-helper"
+	| "scroll-capture";
 
 /** 选区窗口在截图前一直是透明的，渲染进程画好之后才显示；超过这个时间仍未就绪则强制显示。 */
 const REVEAL_TIMEOUT_MS = 1500;
 /** 从主界面发起截图时，等主窗口真正从屏幕上消失再截图（Windows 的隐藏动画约 100–200ms）。 */
 const HIDE_BEFORE_CAPTURE_MS = 250;
+/** 没有屏幕录制权限时连按快捷键，这么久之内只打开一次引导。 */
+const PERMISSION_PROMPT_INTERVAL_MS = 15_000;
+/** 每隔这么久检查一次全局快捷键是否还在（睡眠唤醒、切换输入法后偶尔会失效）。 */
+const SHORTCUT_HEALTH_INTERVAL_MS = 60_000;
+/** 切换输入法的系统通知；收到后稍等再读输入法，确认真的变了再重新注册快捷键。 */
+const INPUT_SOURCE_NOTIFICATION = "com.apple.Carbon.TISNotifySelectedKeyboardInputSourceChanged";
+const INPUT_SOURCE_CHECK_DELAY_MS = 400;
 
 interface CaptureSession {
 	id: number;
-	/** 原始位图，裁剪时使用。 */
-	image: NativeImage;
-	/** 给选区窗口显示用的 JPEG，编码比 PNG 快得多。 */
-	previewJpeg: Buffer;
+	/** 冻结的画面：选区窗口显示它的预览 JPEG，裁剪时从原图取。 */
+	frame: CaptureFrame;
 	display: Display;
 	revealed: boolean;
 	startedAt: number;
@@ -98,9 +133,24 @@ interface CaptureSession {
 	windows: DetectedWindow[] | null;
 	/** 截图开始时的光标位置（选区窗口里的 CSS 像素）。 */
 	cursor: Point;
+	/** 一开始就处在滚动截图模式（托盘、命令行的“滚动截图”）。 */
+	scrollMode: boolean;
 }
 
-const CAPTURE_ACTIONS: readonly CaptureAction[] = ["copy", "copy-path", "save", "edit", "pin", "stitch"];
+const CAPTURE_ACTIONS: readonly CaptureAction[] = ["copy", "copy-path", "save", "edit", "pin", "stitch", "scroll"];
+
+/**
+ * macOS 上常驻的截图进程（ScreenCaptureKit）：截屏、窗口列表、单窗口截图、滚动截图都先走它，
+ * 不可用时退回一次性的 screencapture / 小工具。开发夹具模式下不需要截屏，只有滚动夹具时才启动它。
+ */
+function createCaptureAgent(): CaptureAgent | null {
+	if (process.platform !== "darwin") return null;
+	const executable = nativeHelperPath("newpath-capture-agent");
+	return executable ? new CaptureAgent(executable, writeDiagnostic) : null;
+}
+const captureAgent = devOptions.captureFile ? null : createCaptureAgent();
+const scrollAgent = captureAgent ?? (devOptions.scrollFixture ? createCaptureAgent() : null);
+const capturer = new ScreenCapturer({ agent: captureAgent, fixtureFile: devOptions.captureFile });
 
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -120,6 +170,62 @@ let pendingStitch: NativeImage | null = null;
 const windowLister = new WindowListHelper();
 const pins = new PinManager((options) => createWindow("screenshot-pin", options), () => refreshTrayMenu());
 
+const onboarding = new OnboardingController({
+	createWindow: (windowType, options) =>
+		createWindow(windowType, windowType === "onboarding" ? { ...options, title: mt().onboardingWindowTitle } : options),
+	titleBarOptions,
+	permission: screenPermissionStatus,
+	basics: () => ({
+		captureShortcut: settings.captureShortcut,
+		shortcutRegistered,
+		openAtLogin: OPEN_AT_LOGIN_SUPPORTED && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
+		openAtLoginSupported: OPEN_AT_LOGIN_SUPPORTED,
+	}),
+	dev: devPermissionInfo,
+	// 从终端启动的开发版，权限记在终端上，把 Electron.app 拖进列表没有用
+	helperAllowed: app.isPackaged || devHost === null,
+	agent: captureAgent,
+	settingsBundle: devOptions.settingsBundle,
+	activateApp,
+	markSeen: () => void markOnboardingSeen(),
+	onFinish: (capture) => {
+		const showMain = mainDeferredForOnboarding;
+		mainDeferredForOnboarding = false;
+		if (capture) setTimeout(() => void startCapture(), 350);
+		else if (showMain) showMainWindow();
+	},
+	isQuitting: () => isQuitting,
+});
+
+const scroll = scrollAgent
+	? new ScrollCaptureController({
+			agent: scrollAgent,
+			createPanel: (options) => createWindow("scroll-capture", { ...options, title: mt().scrollPanelTitle }),
+			visibleWindows: () => [...pins.windows, ...(previewWindow ? [previewWindow] : [])],
+			onDone: (image) => finishScrollSession(image),
+			fixture: devOptions.scrollFixture,
+			shortcutsEnabled: devOptions.shortcutEnabled,
+		})
+	: null;
+
+/** 开发模式下给引导看的权限说明。 */
+function devPermissionInfo(): DevPermissionInfo | null {
+	if (app.isPackaged) return null;
+	const host = devHost ? (devHost.bundleId === "com.apple.Terminal" ? mt().terminalAppName : devHost.name) : null;
+	return { host, fixture: capturer.usesFixture };
+}
+
+async function markOnboardingSeen() {
+	if (settings.onboardingVersion >= ONBOARDING_VERSION) return;
+	settings = { ...settings, onboardingVersion: ONBOARDING_VERSION };
+	await persistSettings();
+}
+
+/** 托盘、设置、命令行里打开引导；macOS 上没有权限时直接停在授权那一步。 */
+function openOnboardingFromUser(reason: string) {
+	onboarding.open(process.platform === "darwin" && !hasScreenPermission() ? "permission" : "welcome", reason);
+}
+
 let settingsFile = "";
 let settings: AppSettings;
 let locale: Locale = "zh-CN";
@@ -127,8 +233,15 @@ let shortcutRegistered = false;
 /** 设置里正在录制快捷键时暂停全局快捷键，否则按下当前快捷键会直接开始截图。 */
 let shortcutSuspended = false;
 let stopWatching: (() => void) | null = null;
-/** 屏幕录制权限的提示框正在显示，连按快捷键时不重复弹出。 */
-let permissionPromptOpen = false;
+/** 当前注册着的全局截图快捷键；只注销它自己，不影响滚动截图临时注册的 Esc / ↩。 */
+let registeredShortcut: string | null = null;
+/** 上次因为没有权限而打开引导的时间。 */
+let lastPermissionPromptAt = 0;
+/** 首次启动先显示引导，主界面等引导结束再打开。 */
+let mainDeferredForOnboarding = false;
+let lastInputSource: string | null = null;
+let inputSourceTimer: NodeJS.Timeout | null = null;
+let inputSourceSubscription: number | null = null;
 
 // ---------------------------------------------------------------- 窗口
 
@@ -296,20 +409,32 @@ function showWindow(win: BrowserWindow | null) {
 
 // ---------------------------------------------------------------- 截图流程
 
-async function startCapture(mode: CaptureMode = "capture", stitchTarget: BrowserWindow | null = null) {
+async function startCapture(mode: CaptureMode = "capture", stitchTarget: BrowserWindow | null = null, scrollMode = false) {
 	if (captureSession) {
 		regionWindow?.focus();
+		return;
+	}
+	if (scroll?.active) return;
+	// 系统框选进行中再按一次快捷键：结束它
+	if (capturer.interactiveRunning) {
+		capturer.cancelInteractive();
 		return;
 	}
 	if (captureStarting) return;
 	captureStarting = true;
 	const startedAt = performance.now();
+	const systemSelection = usesSystemSelection(scrollMode);
+	writeDiagnostic("capture-started", { mode, scroll: scrollMode, selection: systemSelection ? "system" : "overlay" });
 	try {
-		// macOS 上已经拒绝过屏幕录制权限：截出来只会是桌面壁纸，直接提示去授权
-		const permission = screenPermissionStatus();
-		if (permission === "denied" || permission === "restricted") {
+		// 没有屏幕录制权限时，任何截图接口都会让 macOS 弹出它自己的授权框（或只截到桌面壁纸），先打开引导
+		if (!hasScreenPermission()) {
+			writeDiagnostic("capture-needs-permission", { permission: screenPermissionStatus() });
 			restoreMainWindow();
-			void explainScreenPermission();
+			promptScreenPermission("capture");
+			return;
+		}
+		if (systemSelection) {
+			await captureWithSystemSelection(mode, stitchTarget);
 			return;
 		}
 
@@ -317,14 +442,8 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 		const display = screen.getDisplayNearestPoint(cursor);
 		// 枚举窗口和截屏同时进行，不拖慢选区窗口的显示
 		const windowsPromise = listWindows();
-		const image = await captureDisplay(display);
-		if (screenPermissionStatus() !== "granted") {
-			// 第一次截图时系统会自己弹出授权请求，这时不再叠一个提示框
-			restoreMainWindow();
-			if (permission !== "not-determined") void explainScreenPermission();
-			return;
-		}
-		if (!image) {
+		const frame = await capturer.captureDisplay(display);
+		if (!frame) {
 			restoreMainWindow();
 			dialog.showErrorBox(mt().captureFailedTitle, mt().captureFailedRetry);
 			return;
@@ -332,8 +451,7 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 
 		const session: CaptureSession = {
 			id: ++captureSeq,
-			image,
-			previewJpeg: image.toJPEG(92),
+			frame,
 			display,
 			revealed: false,
 			startedAt,
@@ -341,6 +459,7 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 			stitchTarget,
 			windows: null,
 			cursor: toDisplayLocalPoint(cursor, display.bounds),
+			scrollMode: scrollMode && scrollAvailable(),
 		};
 		captureSession = session;
 		void windowsPromise.then((windows) => {
@@ -358,14 +477,44 @@ async function startCapture(mode: CaptureMode = "capture", stitchTarget: Browser
 		win.setBounds(display.bounds);
 		win.webContents.send("capture:changed");
 		setTimeout(() => revealRegionWindow(session.id), REVEAL_TIMEOUT_MS);
+	} catch (error) {
+		writeDiagnostic("capture-failed", { error: serializeError(error) });
+		restoreMainWindow();
 	} finally {
 		captureStarting = false;
 	}
 }
 
+/** macOS 上选了“系统框选”时用 screencapture -i；滚动截图总是用 NewPath 的选区。 */
+function usesSystemSelection(scrollMode: boolean) {
+	return process.platform === "darwin" && settings.selectionMode === "system" && !scrollMode;
+}
+
+/** 系统框选：选完直接打开编辑器，拼接模式下追加到编辑窗口。 */
+async function captureWithSystemSelection(mode: CaptureMode, stitchTarget: BrowserWindow | null) {
+	const { image, failed } = await capturer.captureInteractive();
+	restoreMainWindow();
+	if (!image) {
+		// screencapture 自己出错多半是没有权限
+		if (failed && !hasScreenPermission()) promptScreenPermission("system-selection");
+		return;
+	}
+	if (mode === "stitch") deliverStitch(stitchTarget, image);
+	else openPreviewWindow(image);
+}
+
+/** 把一张图追加到发起拼接的编辑窗口。 */
+function deliverStitch(target: BrowserWindow | null, image: NativeImage) {
+	if (!target || target.isDestroyed() || target !== previewWindow) return;
+	pendingStitch = image;
+	target.webContents.send("preview:stitch-added");
+}
+
 /** 截图时屏幕上的窗口，按 Z 序从前往后。Windows 上是物理像素，macOS 上已经是点（DIP）。 */
 function listWindows(): Promise<RawWindow[]> {
-	return process.platform === "darwin" ? listMacWindows(process.pid) : windowLister.list(process.pid);
+	// 夹具图片不是真实屏幕，识别出的窗口也对不上
+	if (capturer.usesFixture) return Promise.resolve([]);
+	return process.platform === "darwin" ? listMacWindows(process.pid, captureAgent) : windowLister.list(process.pid);
 }
 
 /** screenToDipRect 只在 Windows / Linux 上有；macOS 的窗口坐标本来就是 DIP。 */
@@ -373,44 +522,39 @@ function windowRectToDip(rect: Rect): Rect {
 	return process.platform === "darwin" ? rect : screen.screenToDipRect(null, rect);
 }
 
-/** 屏幕录制权限只有 macOS 需要，其他平台总是 granted。 */
-function screenPermissionStatus() {
+/** 屏幕录制权限只有 macOS 需要，其他平台总是 granted。开发模式下从终端启动时，查到的是终端的权限。 */
+function screenPermissionStatus(): ScreenPermission {
 	return process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("screen") : "granted";
 }
 
-/**
- * 没有屏幕录制权限时 macOS 不报错，只给一张只有桌面壁纸的画面，看起来像是截图坏了。
- * 提示用户去系统设置里授权；授权后要重启应用才生效，所以同时提供“重新启动”。
- */
-async function explainScreenPermission() {
-	if (permissionPromptOpen) return;
-	permissionPromptOpen = true;
-	const m = mt();
-	try {
-		activateApp();
-		const { response } = await dialog.showMessageBox({
-			type: "warning",
-			title: m.screenPermissionTitle,
-			message: m.screenPermissionMessage,
-			detail: m.screenPermissionDetail,
-			buttons: [m.screenPermissionOpenSettings, m.screenPermissionRelaunch, m.screenPermissionLater],
-			defaultId: 0,
-			cancelId: 2,
-		});
-		if (response === 0) {
-			await shell.openExternal(SCREEN_RECORDING_SETTINGS_URL);
-		} else if (response === 1) {
-			app.relaunch();
-			app.quit();
-		}
-	} finally {
-		permissionPromptOpen = false;
-	}
+/** 开发夹具代替了屏幕时不需要权限。 */
+function hasScreenPermission() {
+	return capturer.usesFixture || screenPermissionStatus() === "granted";
+}
+
+/** 没有权限时打开引导的授权步骤；连按快捷键时不反复打开。 */
+function promptScreenPermission(reason: string) {
+	if (process.platform !== "darwin") return;
+	const now = Date.now();
+	if (now - lastPermissionPromptAt < PERMISSION_PROMPT_INTERVAL_MS && onboarding.window) return;
+	lastPermissionPromptAt = now;
+	onboarding.open("permission", reason);
+}
+
+/** 滚动截图需要截图进程和 macOS 14 起的 ScreenCaptureKit；开发用的滚动夹具不受系统版本限制。 */
+function scrollAvailable() {
+	if (!scroll) return false;
+	return !!devOptions.scrollFixture || supportsScrollCapture(process.platform, process.getSystemVersion());
 }
 
 /** 主界面的"开始截图"：先把主窗口藏起来，免得它出现在截图里。 */
+/** 正在选区、系统框选或滚动截图。 */
+function captureBusy() {
+	return !!captureSession || captureStarting || capturer.interactiveRunning || !!scroll?.active;
+}
+
 async function startCaptureFromMain() {
-	if (captureSession || captureStarting) return;
+	if (captureBusy()) return;
 	const win = mainWindow;
 	if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) {
 		restoreMainAfterCapture = true;
@@ -423,7 +567,7 @@ async function startCaptureFromMain() {
 /** 编辑窗口的"再截一张"：先藏起编辑窗口，截完（或取消）再恢复。 */
 async function startStitchCapture() {
 	const target = previewWindow;
-	if (!target || target.isDestroyed() || captureSession || captureStarting) return;
+	if (!target || target.isDestroyed() || captureBusy()) return;
 	target.hide();
 	await new Promise((resolve) => setTimeout(resolve, HIDE_BEFORE_CAPTURE_MS));
 	await startCapture("stitch", target);
@@ -450,9 +594,14 @@ function revealRegionWindow(sessionId: number) {
 	win.focus();
 }
 
-function closeCaptureSession() {
+/**
+ * 结束选区。keepFrame：调用方还要从画面裁剪，用完自己 release；
+ * keepHidden：接着进入滚动截图，主界面和拼接的编辑窗口等滚动截图结束再恢复。
+ */
+function closeCaptureSession(options: { keepFrame?: boolean; keepHidden?: boolean } = {}) {
 	const session = captureSession;
 	captureSession = null;
+	if (session && !options.keepFrame) session.frame.release();
 	const win = regionWindow;
 	if (win && !win.isDestroyed()) {
 		// 先透明再隐藏：立即消失，下次显示时也不会露出旧画面
@@ -460,8 +609,43 @@ function closeCaptureSession() {
 		win.hide();
 		win.webContents.send("capture:changed");
 	}
+	if (options.keepHidden) return;
 	restoreMainWindow();
 	if (session?.stitchTarget) showWindow(session.stitchTarget);
+}
+
+/** 滚动截图结束后要恢复的东西：普通截图打开编辑器，拼接模式追加到发起的编辑窗口。 */
+let scrollContext: { mode: CaptureMode; stitchTarget: BrowserWindow | null } | null = null;
+
+/** 选区里点了“滚动截图”：换算成原图像素交给截图进程，成功后关掉选区、让出前台。 */
+async function startScrollFromSession(session: CaptureSession, rect: Rect) {
+	if (!scroll || !scrollAvailable()) return;
+	const pixelRect = toDevicePixelRect(rect, session.display.scaleFactor, session.frame.size);
+	const started = pixelRect
+		? await scroll.start({ display: session.display, pixelRect, frameSize: session.frame.size })
+		: false;
+	if (captureSession !== session) {
+		if (started) scroll.cancel("session-replaced");
+		return;
+	}
+	if (!started) {
+		closeCaptureSession();
+		dialog.showErrorBox(mt().scrollCaptureFailedTitle, mt().scrollCaptureFailedDetail);
+		return;
+	}
+	scrollContext = { mode: session.mode, stitchTarget: session.stitchTarget };
+	closeCaptureSession({ keepHidden: true });
+}
+
+function finishScrollSession(image: NativeImage | null) {
+	const context = scrollContext;
+	scrollContext = null;
+	if (image) {
+		if (context?.mode === "stitch") deliverStitch(context.stitchTarget, image);
+		else openPreviewWindow(image);
+	}
+	restoreMainWindow();
+	if (context?.stitchTarget) showWindow(context.stitchTarget);
 }
 
 /** 另存为：弹出保存对话框。 */
@@ -509,6 +693,7 @@ function getSettingsState(): SettingsState {
 		locale,
 		openAtLogin: OPEN_AT_LOGIN_SUPPORTED && app.getLoginItemSettings(loginItemOptions()).openAtLogin,
 		openAtLoginSupported: OPEN_AT_LOGIN_SUPPORTED,
+		screenPermission: screenPermissionStatus(),
 	};
 }
 
@@ -547,35 +732,79 @@ async function persistSettings() {
 
 function tryRegister(accelerator: string) {
 	try {
-		return globalShortcut.register(accelerator, () => void startCapture());
+		return globalShortcut.register(accelerator, () => {
+			writeDiagnostic("shortcut-triggered");
+			void startCapture();
+		});
 	} catch {
 		// 格式不合法的加速键会直接抛错
 		return false;
 	}
 }
 
-/** 按当前设置（重新）注册全局快捷键。 */
-function syncShortcut() {
-	globalShortcut.unregisterAll();
-	if (!shortcutSuspended) {
+function unregisterCaptureShortcut() {
+	if (registeredShortcut) globalShortcut.unregister(registeredShortcut);
+	registeredShortcut = null;
+}
+
+/** 按当前设置（重新）注册全局快捷键。开发模式下设了 NEWPATH_DEV_SHORTCUT=0 时不注册，免得和安装版抢。 */
+function syncShortcut(reason = "sync") {
+	unregisterCaptureShortcut();
+	if (!shortcutSuspended && devOptions.shortcutEnabled) {
 		shortcutRegistered = tryRegister(settings.captureShortcut);
+		if (shortcutRegistered) registeredShortcut = settings.captureShortcut;
+		writeDiagnostic("shortcut-registered", { reason, ok: shortcutRegistered });
 		if (!shortcutRegistered) console.warn(`全局快捷键 ${settings.captureShortcut} 注册失败，可能已被其他程序占用`);
+	} else if (!devOptions.shortcutEnabled) {
+		shortcutRegistered = false;
 	}
 	refreshTrayMenu();
 }
 
+/** 快捷键偶尔会悄悄失效（睡眠唤醒、切换输入法之后），发现不在了就重新注册；force 时无论如何重来一次。 */
+function repairShortcut(reason: string, force = false) {
+	if (shortcutSuspended || !devOptions.shortcutEnabled || isQuitting) return;
+	if (!force && registeredShortcut && globalShortcut.isRegistered(registeredShortcut)) return;
+	writeDiagnostic("shortcut-repair", { reason, force });
+	syncShortcut(reason);
+}
+
+/** macOS 切换输入法后全局快捷键可能失效：确认输入法真的变了再重新注册。 */
+function readInputSource(): Promise<string | null> {
+	return new Promise((resolve) => {
+		execFile(
+			"/usr/bin/defaults",
+			["read", "com.apple.HIToolbox", "AppleSelectedInputSources"],
+			{ encoding: "utf8", timeout: 1500 },
+			(error, stdout) => resolve(error ? null : stdout.trim() || null),
+		);
+	});
+}
+
+function scheduleInputSourceCheck() {
+	if (inputSourceTimer) clearTimeout(inputSourceTimer);
+	inputSourceTimer = setTimeout(() => {
+		inputSourceTimer = null;
+		void readInputSource().then((signature) => {
+			if (!signature || signature === lastInputSource) return;
+			const changed = lastInputSource !== null;
+			lastInputSource = signature;
+			if (changed) repairShortcut("input-source", true);
+		});
+	}, INPUT_SOURCE_CHECK_DELAY_MS);
+}
+
 async function changeShortcut(accelerator: string): Promise<ActionResult> {
 	// 先试着注册一次，确认可用后再写入设置；失败时恢复原来的快捷键
-	globalShortcut.unregisterAll();
+	unregisterCaptureShortcut();
 	const available = tryRegister(accelerator);
-	globalShortcut.unregisterAll();
+	if (available) globalShortcut.unregister(accelerator);
 	if (!available) {
-		syncShortcut();
+		syncShortcut("change-failed");
 		return { ok: false, reason: mt().shortcutUnavailable(accelerator) };
 	}
 	settings = { ...settings, captureShortcut: accelerator };
-	shortcutRegistered = true;
-	syncShortcut();
+	syncShortcut("changed");
 	await persistSettings();
 	return { ok: true };
 }
@@ -623,11 +852,16 @@ function toPngBuffer(data: unknown): Buffer | null {
 
 function parseFinishPayload(payload: unknown): CaptureFinishPayload | null {
 	if (!payload || typeof payload !== "object") return null;
-	const { rect, action } = payload as Record<string, unknown>;
+	const { rect, action, windowId } = payload as Record<string, unknown>;
 	if (!CAPTURE_ACTIONS.includes(action as CaptureAction) || !rect || typeof rect !== "object") return null;
 	const { x, y, width, height } = rect as Record<string, unknown>;
-	if (![x, y, width, height].every((value) => typeof value === "number")) return null;
-	return { rect: { x, y, width, height } as CaptureFinishPayload["rect"], action: action as CaptureAction };
+	if (![x, y, width, height].every((value) => typeof value === "number" && Number.isFinite(value))) return null;
+	const result: CaptureFinishPayload = {
+		rect: { x, y, width, height } as CaptureFinishPayload["rect"],
+		action: action as CaptureAction,
+	};
+	if (typeof windowId === "number" && Number.isInteger(windowId) && windowId > 0) result.windowId = windowId;
+	return result;
 }
 
 /** 本机用户名和主机名，智能打码时一并遮住。 */
@@ -684,11 +918,13 @@ function registerIpc() {
 		if (!session || !isFrom(event, regionWindow)) return null;
 		return {
 			id: session.id,
-			imageBytes: session.previewJpeg,
+			imageBytes: session.frame.previewJpeg,
 			mimeType: "image/jpeg",
 			scaleFactor: session.display.scaleFactor,
 			mode: session.mode,
 			cursor: session.cursor,
+			scrollAvailable: scrollAvailable(),
+			scrollMode: session.scrollMode,
 		};
 	});
 
@@ -710,14 +946,38 @@ function registerIpc() {
 		const session = captureSession;
 		const payload = parseFinishPayload(data);
 		if (!session || !payload || !isFrom(event, regionWindow)) return;
+		writeDiagnostic("capture-finished", { action: payload.action, window: payload.windowId !== undefined });
+		if (payload.action === "scroll") {
+			await startScrollFromSession(session, payload.rect);
+			return;
+		}
 		// 拼接模式只接受 stitch，普通截图不接受 stitch
 		if ((payload.action === "stitch") !== (session.mode === "stitch")) return;
 		const { scaleFactor, bounds } = session.display;
-		const crop = toDevicePixelRect(payload.rect, scaleFactor, session.image.getSize());
-		closeCaptureSession();
-		if (!crop) return;
+		const crop = toDevicePixelRect(payload.rect, scaleFactor, session.frame.size);
+		// 只认这次截图里识别出的窗口
+		const windowId =
+			payload.windowId !== undefined && session.windows?.some((item) => item.id === payload.windowId)
+				? payload.windowId
+				: null;
+		closeCaptureSession({ keepFrame: true });
+		if (!crop) {
+			session.frame.release();
+			return;
+		}
 
-		const image = session.image.crop(crop);
+		let image: NativeImage | null = null;
+		try {
+			// 单击选中的窗口：单独截取这个窗口（被挡住的部分也完整、带透明圆角），失败时退回按选区裁剪
+			if (windowId !== null) image = await capturer.captureWindow(windowId);
+			image ??= await session.frame.crop(crop);
+		} finally {
+			session.frame.release();
+		}
+		if (!image) {
+			dialog.showErrorBox(mt().captureFailedTitle, mt().captureFailedRetry);
+			return;
+		}
 		switch (payload.action) {
 			case "copy":
 				clipboard.writeImage(image);
@@ -741,13 +1001,9 @@ function registerIpc() {
 				// 钉在截图时的原位置
 				pins.open(image, scaleFactor, { x: bounds.x + crop.x / scaleFactor, y: bounds.y + crop.y / scaleFactor });
 				break;
-			case "stitch": {
-				const target = session.stitchTarget;
-				if (!target || target.isDestroyed() || target !== previewWindow) break;
-				pendingStitch = image;
-				target.webContents.send("preview:stitch-added");
+			case "stitch":
+				deliverStitch(session.stitchTarget, image);
 				break;
-			}
 		}
 	});
 
@@ -859,6 +1115,39 @@ function registerIpc() {
 		return result;
 	});
 
+	// 欢迎引导
+	ipcMain.handle("onboarding:get-state", (event) => (onboarding.isFrom(event) ? onboarding.state() : null));
+
+	ipcMain.handle("onboarding:request-permission", async (event): Promise<ScreenPermission> => {
+		if (!onboarding.isFrom(event)) return screenPermissionStatus();
+		return onboarding.requestPermission();
+	});
+
+	ipcMain.handle("onboarding:relaunch", (event) => {
+		// 稍等一下，让渲染进程先收到回应
+		if (onboarding.isFrom(event)) setTimeout(() => onboarding.relaunch(), 50);
+	});
+
+	ipcMain.handle("onboarding:finish", (event, capture: unknown) => {
+		if (onboarding.isFrom(event)) onboarding.finish(capture === true);
+	});
+
+	// 拖拽授权小窗（startDrag 要用 send，不能用 invoke）
+	ipcMain.on("permission-helper:drag", (event) => onboarding.startDrag(event));
+
+	// 滚动截图的进度面板
+	ipcMain.handle("scroll:get-state", (event) => (scroll?.isFromPanel(event) ? scroll.state() : null));
+
+	ipcMain.handle("scroll:get-preview", (event) => (scroll?.isFromPanel(event) ? scroll.previewBytes() : null));
+
+	ipcMain.handle("scroll:finish", (event) => {
+		if (scroll?.isFromPanel(event)) void scroll.finish("panel");
+	});
+
+	ipcMain.handle("scroll:cancel", (event) => {
+		if (scroll?.isFromPanel(event)) scroll.cancel("panel");
+	});
+
 	// 主窗口：截图库
 	handleMain("capture:start", () => startCaptureFromMain());
 
@@ -935,9 +1224,30 @@ function registerIpc() {
 		return getSettingsState();
 	});
 
-	handleMain("settings:set-open-at-login", (enabled): ActionResult => {
+	// 主窗口和欢迎引导都能改开机自启
+	ipcMain.handle("settings:set-open-at-login", (event, enabled: unknown): ActionResult => {
+		if (!isFrom(event, mainWindow) && !onboarding.isFrom(event)) throw new Error("settings:set-open-at-login 调用来源无效");
 		if (typeof enabled !== "boolean") return { ok: false, reason: mt().invalidArgument };
-		return setOpenAtLogin(enabled);
+		const result = setOpenAtLogin(enabled);
+		onboarding.notifyChanged();
+		return result;
+	});
+
+	handleMain("settings:set-selection-mode", async (mode): Promise<SettingsState> => {
+		if (isSelectionMode(mode) && mode !== settings.selectionMode && process.platform === "darwin") {
+			settings = { ...settings, selectionMode: mode };
+			writeDiagnostic("selection-mode-changed", { mode });
+			await persistSettings();
+		}
+		return getSettingsState();
+	});
+
+	handleMain("settings:open-onboarding", () => openOnboardingFromUser("settings"));
+
+	handleMain("settings:open-logs", async () => {
+		const dir = diagnosticsDir() ?? path.join(app.getPath("userData"), "logs");
+		await fs.mkdir(dir, { recursive: true });
+		await shell.openPath(dir);
 	});
 
 	// 所有窗口：界面语言
@@ -963,6 +1273,7 @@ function registerIpc() {
 // ---------------------------------------------------------------- 托盘
 
 function createTray() {
+	allowMenuBarItem();
 	let icon: NativeImage;
 	if (process.platform === "darwin") {
 		// 菜单栏用单色模板图（同目录的 @2x 会自动加载），系统按浅色 / 深色菜单栏自动着色
@@ -976,6 +1287,70 @@ function createTray() {
 	// macOS 的惯例是单击菜单栏图标弹出菜单；Windows / Linux 上单击直接截图
 	if (process.platform !== "darwin") tray.on("click", () => void startCapture());
 	refreshTrayMenu();
+}
+
+/**
+ * macOS 会把放不下的菜单栏图标藏起来，macOS 26 起用户也能在“系统设置 → 菜单栏”里关掉某个应用的图标。
+ * 菜单栏是 NewPath 唯一常驻的入口，所以新建图标前先请求显示；新建时系统会读这些键。
+ */
+function allowMenuBarItem() {
+	if (process.platform !== "darwin") return;
+	for (const key of MENU_BAR_VISIBILITY_KEYS) {
+		if (systemPreferences.getUserDefault(key, "boolean") !== true) systemPreferences.setUserDefault(key, "boolean", true);
+	}
+}
+
+/**
+ * 被隐藏的菜单栏图标高度为 0。先重建一次（重建时会请求显示）；还是看不见，且用户是主动打开应用（explain）时，
+ * 告诉用户应用在运行、怎么截图、去哪里把图标打开。
+ */
+function checkTrayVisible(reason: string, explain: boolean, retried = false) {
+	if (process.platform !== "darwin" || !tray || tray.isDestroyed()) return;
+	const bounds = tray.getBounds();
+	if (bounds.height > 0) return;
+	writeDiagnostic("tray-hidden", { reason, retried });
+	if (!retried) {
+		tray.destroy();
+		tray = null;
+		createTray();
+		setTimeout(() => checkTrayVisible(reason, explain, true), 800);
+		return;
+	}
+	if (explain) void explainHiddenMenuBarIcon();
+}
+
+async function explainHiddenMenuBarIcon() {
+	const m = mt();
+	activateApp();
+	const { response } = await dialog.showMessageBox({
+		type: "info",
+		message: m.menuBarHiddenTitle,
+		detail: m.menuBarHiddenDetail(formatShortcutForDialog(settings.captureShortcut)),
+		buttons: [m.menuBarHiddenOpenSettings, m.menuBarHiddenOk],
+		defaultId: 0,
+		cancelId: 1,
+	});
+	if (response === 0) void shell.openExternal(MENU_BAR_SETTINGS_URL);
+}
+
+/** 对话框里的快捷键写法：macOS 上用 ⌘⇧ 这样的符号。 */
+function formatShortcutForDialog(accelerator: string) {
+	if (process.platform !== "darwin") return accelerator;
+	const symbols: Record<string, string> = {
+		Command: "⌘",
+		Cmd: "⌘",
+		CommandOrControl: "⌘",
+		CmdOrCtrl: "⌘",
+		Control: "⌃",
+		Ctrl: "⌃",
+		Alt: "⌥",
+		Option: "⌥",
+		Shift: "⇧",
+	};
+	return accelerator
+		.split("+")
+		.map((part) => symbols[part] ?? part)
+		.join("");
 }
 
 /**
@@ -1005,7 +1380,12 @@ function refreshTrayMenu() {
 				accelerator: usable ? settings.captureShortcut : undefined,
 				click: () => void startCapture(),
 			},
+			...(scrollAvailable()
+				? [{ label: m.trayScrollCapture, click: () => void startCapture("capture", null, true) }]
+				: []),
 			{ label: m.trayCloseAllPins, enabled: pins.count > 0, click: () => pins.closeAll() },
+			{ type: "separator" },
+			{ label: m.trayOnboarding, click: () => openOnboardingFromUser("tray") },
 			{ type: "separator" },
 			{ label: m.trayQuit, role: "quit" },
 		]),
@@ -1014,13 +1394,69 @@ function refreshTrayMenu() {
 
 // ---------------------------------------------------------------- 启动
 
+function handleLaunchCommand(command: LaunchCommand) {
+	writeDiagnostic("launch-command", { command });
+	switch (command) {
+		case "capture":
+			void startCapture();
+			break;
+		case "capture-scroll":
+			void startCapture("capture", null, scrollAvailable());
+			break;
+		case "onboarding":
+			openOnboardingFromUser("command-line");
+			break;
+		case "show":
+			showMainWindow();
+			break;
+	}
+}
+
+/** 睡眠、锁屏时结束进行中的截图；醒来后快捷键可能失效，截图进程也要重新准备。 */
+function watchPower() {
+	const stopCapturing = (reason: string) => {
+		writeDiagnostic("power-inactive", { reason });
+		capturer.cancelInteractive();
+		scroll?.cancel(reason);
+		if (captureSession) closeCaptureSession();
+	};
+	const recover = (reason: string) => {
+		writeDiagnostic("power-recovery", { reason });
+		repairShortcut(reason, true);
+		warmCaptureAgent(reason);
+	};
+	powerMonitor.on("suspend", () => stopCapturing("suspend"));
+	powerMonitor.on("lock-screen", () => stopCapturing("lock-screen"));
+	powerMonitor.on("resume", () => recover("resume"));
+	powerMonitor.on("unlock-screen", () => recover("unlock-screen"));
+}
+
+/** 有权限时让截图进程提前准备好 ScreenCaptureKit，第一次截图和之后一样快。 */
+function warmCaptureAgent(reason: string) {
+	if (!captureAgent || screenPermissionStatus() !== "granted") return;
+	void captureAgent.request({ cmd: "warm" }, 5000).then((response) => {
+		writeDiagnostic("capture-agent-warm", { reason, ok: response?.ok ?? false, ms: response?.ms, error: response?.error });
+	});
+}
+
 if (!app.requestSingleInstanceLock()) {
 	app.quit();
 } else {
-	// 再次启动应用时打开主界面；macOS 上在访达里再次打开已在运行的应用，触发的是 activate
-	app.on("second-instance", () => showMainWindow());
+	// 再次启动应用时打开主界面（带命令行参数时执行对应命令）；macOS 上在访达里再次打开已在运行的应用，触发的是 activate
+	app.on("second-instance", (_event, argv) => {
+		if (!app.isReady()) return;
+		const command = launchCommandFromArgs(argv);
+		if (command) {
+			handleLaunchCommand(command);
+			return;
+		}
+		showMainWindow();
+		checkTrayVisible("second-instance", true);
+	});
 	app.on("activate", () => {
-		if (app.isReady()) showMainWindow();
+		if (!app.isReady()) return;
+		showMainWindow();
+		checkTrayVisible("activate", true);
 	});
 
 	// 托盘应用：关闭所有窗口后继续驻留
@@ -1034,33 +1470,85 @@ if (!app.requestSingleInstanceLock()) {
 		globalShortcut.unregisterAll();
 		stopWatching?.();
 		windowLister.dispose();
+		capturer.cancelInteractive();
+		scroll?.cancel("quit");
+		captureAgent?.stop();
+		if (scrollAgent !== captureAgent) scrollAgent?.stop();
+		if (inputSourceSubscription !== null) systemPreferences.unsubscribeNotification(inputSourceSubscription);
 	});
 
 	app.whenReady().then(async () => {
+		await initDiagnostics(path.join(app.getPath("userData"), "logs"), { echo: !!VITE_DEV_SERVER_URL });
+		writeDiagnostic("app-ready", {
+			version: app.getVersion(),
+			platform: process.platform,
+			arch: process.arch,
+			os: process.getSystemVersion(),
+			packaged: app.isPackaged,
+			permission: screenPermissionStatus(),
+			agent: !!captureAgent,
+			fixture: capturer.usesFixture,
+			devHost: devHost?.bundleId ?? devHost?.name ?? null,
+		});
 		if (process.platform === "darwin") {
 			app.dock?.hide();
 			setMacAppMenu();
 		}
 		if (process.platform === "win32") app.setAppUserModelId(APP_ID);
+		// 渲染进程不需要摄像头、麦克风、通知等任何浏览器权限，一律拒绝
+		session.defaultSession.setPermissionCheckHandler(() => false);
+		session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
 		settingsFile = path.join(app.getPath("userData"), "settings.json");
 		settings = await loadSettings(settingsFile, {
 			captureShortcut: DEFAULT_CAPTURE_SHORTCUT,
 			saveDir: path.join(app.getPath("pictures"), "NewPath"),
 			language: "system",
+			selectionMode: "overlay",
+			onboardingVersion: 0,
 		});
 		// 这时还没有窗口和托盘，只算出语言
 		applyLocale();
 
 		registerIpc();
 		createTray();
-		syncShortcut();
+		syncShortcut("app-ready");
 		startWatching();
-		// 窗口枚举进程启动要一两秒，提前拉起来
+		// Windows 的窗口枚举进程启动要一两秒，提前拉起来；macOS 上用常驻的截图进程，下面预热
 		windowLister.start();
+		warmCaptureAgent("app-ready");
 		// 提前创建并加载好选区窗口，第一次截图也不用等页面加载
 		getRegionWindow();
+
+		// 授权后重启 / 系统设置“退出并重新打开” / 第一次启动：先打开引导，主界面等引导结束再显示
+		const command = launchCommandFromArgs(process.argv);
+		const relaunchStep = relaunchStepFromArgs(process.argv);
+		const atLogin = launchedAtLogin();
+		let guideOpened = false;
+		if (relaunchStep) {
+			onboarding.clearPendingMarker();
+			onboarding.open(relaunchStep, "relaunch");
+			guideOpened = true;
+		} else if (process.platform === "darwin" && onboarding.celebrateIfPending()) {
+			guideOpened = true;
+		} else if (settings.onboardingVersion < ONBOARDING_VERSION && !atLogin && !command) {
+			onboarding.open("welcome", "first-launch");
+			guideOpened = true;
+		}
+		mainDeferredForOnboarding = guideOpened && !atLogin;
 		// 开机自启时只驻留托盘；主窗口照样提前加载，之后打开不用等
-		getMainWindow(!launchedAtLogin());
+		getMainWindow(!atLogin && !guideOpened && !command);
+		if (command) handleLaunchCommand(command);
+		// 菜单栏图标被系统藏起来时先悄悄重建一次
+		setTimeout(() => checkTrayVisible("launch", false), 1500);
+
+		watchPower();
+		setInterval(() => repairShortcut("health"), SHORTCUT_HEALTH_INTERVAL_MS);
+		if (process.platform === "darwin") {
+			lastInputSource = await readInputSource();
+			inputSourceSubscription = systemPreferences.subscribeNotification(INPUT_SOURCE_NOTIFICATION, () =>
+				scheduleInputSourceCheck(),
+			);
+		}
 	});
 }

@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { AppSettings } from "./ipcTypes";
+import type { AppSettings, SelectionMode } from "./ipcTypes";
 import { isLanguageSetting } from "./locale";
+
+export function isSelectionMode(value: unknown): value is SelectionMode {
+	return value === "overlay" || value === "system";
+}
 
 /** 字段缺失或类型不对时回退到默认值，保证旧版本或手改坏的配置文件也能启动。 */
 export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSettings {
@@ -10,10 +14,14 @@ export function normalizeSettings(raw: unknown, defaults: AppSettings): AppSetti
 		const item = value[key];
 		return typeof item === "string" && item.trim() ? item.trim() : defaults[key];
 	};
+	const onboarding = value.onboardingVersion;
 	return {
 		captureShortcut: pick("captureShortcut"),
 		saveDir: pick("saveDir"),
 		language: isLanguageSetting(value.language) ? value.language : defaults.language,
+		selectionMode: isSelectionMode(value.selectionMode) ? value.selectionMode : defaults.selectionMode,
+		onboardingVersion:
+			typeof onboarding === "number" && Number.isInteger(onboarding) && onboarding >= 0 ? onboarding : defaults.onboardingVersion,
 	};
 }
 

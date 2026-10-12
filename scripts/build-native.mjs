@@ -15,9 +15,23 @@ const outDir = path.join(root, "build", "native");
 const MIN_MACOS = "12.0";
 const ARCHS = { arm64: "arm64", x64: "x86_64" };
 
+/** 窗口枚举的源码，窗口列表工具和截图进程共用。 */
+const WINDOW_LIST_SOURCE = path.join(root, "native", "newpath-window-list", "WindowList.swift");
+
+/**
+ * name：输出文件名，也是 native/ 下的源码目录（只取目录下第一层的 .swift，不含 tests/）；
+ * extraSources：额外一起编译的源码；weakFrameworks：弱链接，老系统上没有这个框架也能启动。
+ */
 const HELPERS = [
 	{ name: "newpath-window-list", frameworks: ["CoreGraphics"] },
 	{ name: "newpath-ocr", frameworks: ["Vision", "ImageIO"] },
+	{
+		name: "newpath-capture-agent",
+		extraSources: [WINDOW_LIST_SOURCE],
+		frameworks: ["AppKit", "CoreGraphics", "CoreMedia", "CoreVideo", "ImageIO"],
+		// SCScreenshotManager 要 macOS 14、SCStream 要 12.3；弱链接后老系统上照样能启动，相应命令回答 unsupported
+		weakFrameworks: ["ScreenCaptureKit"],
+	},
 ];
 
 if (process.platform !== "darwin") {
@@ -37,23 +51,34 @@ async function mtime(file) {
 
 async function sourcesOf(helper) {
 	const dir = path.join(root, "native", helper.name);
-	const files = (await readdir(dir)).filter((file) => file.endsWith(".swift")).sort();
-	return files.map((file) => path.join(dir, file));
+	const files = (await readdir(dir, { withFileTypes: true }))
+		.filter((entry) => entry.isFile() && entry.name.endsWith(".swift"))
+		.map((entry) => entry.name)
+		.sort();
+	return [...files.map((file) => path.join(dir, file)), ...(helper.extraSources ?? [])];
 }
 
 async function compile(helper, sources, arch, output) {
-	await exec("xcrun", [
-		"--sdk",
-		"macosx",
-		"swiftc",
-		"-O",
-		"-target",
-		`${arch}-apple-macos${MIN_MACOS}`,
-		...helper.frameworks.flatMap((framework) => ["-framework", framework]),
-		...sources,
-		"-o",
-		output,
-	]);
+	const { stderr } = await exec(
+		"xcrun",
+		[
+			"--sdk",
+			"macosx",
+			"swiftc",
+			"-O",
+			"-whole-module-optimization",
+			"-target",
+			`${arch}-apple-macos${MIN_MACOS}`,
+			...helper.frameworks.flatMap((framework) => ["-framework", framework]),
+			...(helper.weakFrameworks ?? []).flatMap((framework) => ["-Xlinker", "-weak_framework", "-Xlinker", framework]),
+			...sources,
+			"-o",
+			output,
+		],
+		{ maxBuffer: 4 * 1024 * 1024 },
+	);
+	// 编译成功时 stderr 里是警告，照样打出来
+	if (stderr.trim()) process.stderr.write(stderr);
 }
 
 async function build(helper) {

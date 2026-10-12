@@ -21,6 +21,12 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
+/* 透明窗口（拖拽授权小窗、滚动截图面板）：页面不画背景，圆角面板之外露出桌面 */
+html.transparent-window,
+html.transparent-window body {
+	background: transparent;
+}
+
 /* 细滚动条，悬停时加深 */
 ::-webkit-scrollbar {
 	width: 10px;

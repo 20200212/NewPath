@@ -37,6 +37,11 @@ export class PinManager {
 		return this.pins.size;
 	}
 
+	/** 所有钉图窗口（滚动截图让出前台后要把它们重新显示出来）。 */
+	get windows(): BrowserWindow[] {
+		return [...this.pins.values()].map((record) => record.win).filter((win) => !win.isDestroyed());
+	}
+
 	/**
 	 * 打开一张钉图。image 是物理像素，按 scaleFactor 换算成窗口尺寸，
 	 * 这样钉图和截图时屏幕上看到的一样大；origin 为 null 时放在工作区右上角。

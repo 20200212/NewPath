@@ -7,9 +7,13 @@ import type {
 	LanguageSetting,
 	Locale,
 	OcrResult,
+	OnboardingState,
 	PinImageInfo,
 	SaveResult,
+	ScreenPermission,
 	ScreenshotItem,
+	ScrollCaptureState,
+	SelectionMode,
 	SensitiveResult,
 	SettingsState,
 } from "./ipcTypes";
@@ -72,6 +76,27 @@ const api = {
 	pinCopy: (): Promise<void> => ipcRenderer.invoke("pin:copy"),
 	pinSave: (): Promise<SaveResult> => ipcRenderer.invoke("pin:save"),
 
+	// 欢迎引导窗口（步骤或权限变化时收到 onboarding:changed，再主动拉取）
+	getOnboardingState: (): Promise<OnboardingState | null> => ipcRenderer.invoke("onboarding:get-state"),
+	onOnboardingChanged: (callback: () => void) => subscribe("onboarding:changed", callback),
+	/** 申请屏幕录制权限：登记到系统列表、打开系统设置，并在系统设置下方显示拖拽授权的小窗。 */
+	requestScreenPermission: (): Promise<ScreenPermission> => ipcRenderer.invoke("onboarding:request-permission"),
+	/** 授权后重新启动应用，重启后引导停在“完成”这一步。 */
+	relaunchForPermission: (): Promise<void> => ipcRenderer.invoke("onboarding:relaunch"),
+	/** 关闭引导；capture 为 true 时接着截一张试试。 */
+	finishOnboarding: (capture: boolean): Promise<void> => ipcRenderer.invoke("onboarding:finish", capture),
+
+	// 拖拽授权小窗：拖动的是应用本身（.app），放进系统设置的“屏幕录制”列表即可授权
+	startPermissionDrag: (): void => ipcRenderer.send("permission-helper:drag"),
+
+	// 滚动截图的进度面板（状态变化时收到 scroll:changed，再主动拉取）
+	getScrollState: (): Promise<ScrollCaptureState | null> => ipcRenderer.invoke("scroll:get-state"),
+	onScrollChanged: (callback: () => void) => subscribe("scroll:changed", callback),
+	/** 拼接预览（JPEG）；previewId 变了再拉取。 */
+	getScrollPreview: (): Promise<Uint8Array | null> => ipcRenderer.invoke("scroll:get-preview"),
+	finishScroll: (): Promise<void> => ipcRenderer.invoke("scroll:finish"),
+	cancelScroll: (): Promise<void> => ipcRenderer.invoke("scroll:cancel"),
+
 	// 主窗口：截图库（文件只用文件名指代，主进程负责定位到保存目录）
 	startCapture: (): Promise<void> => ipcRenderer.invoke("capture:start"),
 	listScreenshots: (): Promise<ScreenshotItem[]> => ipcRenderer.invoke("library:list"),
@@ -96,8 +121,16 @@ const api = {
 	openSaveDir: (): Promise<void> => ipcRenderer.invoke("settings:open-save-dir"),
 	setLanguage: (language: LanguageSetting): Promise<SettingsState> =>
 		ipcRenderer.invoke("settings:set-language", language),
+	/** 主窗口和欢迎引导都能调用。 */
 	setOpenAtLogin: (enabled: boolean): Promise<ActionResult> =>
 		ipcRenderer.invoke("settings:set-open-at-login", enabled),
+	/** macOS 上的选区方式。 */
+	setSelectionMode: (mode: SelectionMode): Promise<SettingsState> =>
+		ipcRenderer.invoke("settings:set-selection-mode", mode),
+	/** 打开欢迎引导；macOS 上没有屏幕录制权限时直接停在授权那一步。 */
+	openOnboarding: (): Promise<void> => ipcRenderer.invoke("settings:open-onboarding"),
+	/** 在访达 / 资源管理器里打开诊断日志所在的文件夹。 */
+	openLogs: (): Promise<void> => ipcRenderer.invoke("settings:open-logs"),
 
 	// 自绘标题栏
 	minimizeWindow: (): Promise<void> => ipcRenderer.invoke("window:minimize"),

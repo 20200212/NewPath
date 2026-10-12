@@ -3,6 +3,7 @@ import { capture } from "./capture";
 import { common } from "./common";
 import { editor } from "./editor";
 import { main } from "./main";
+import { onboarding } from "./onboarding";
 
 /** 按界面分区；每个分区文件里三种语言放在一起，缺 key 时类型检查不过。 */
 export function getMessages(locale: Locale) {
@@ -11,6 +12,7 @@ export function getMessages(locale: Locale) {
 		main: main[locale],
 		editor: editor[locale],
 		capture: capture[locale],
+		onboarding: onboarding[locale],
 	};
 }
 

@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Camera, FolderOpen, FolderTree, Images, Settings } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LanguageSetting, ScreenshotItem, SettingsState } from "../../../electron/ipcTypes";
+import type { LanguageSetting, ScreenshotItem, SelectionMode, SettingsState } from "../../../electron/ipcTypes";
 import { Button } from "@/components/ui/Button";
 import { Toast, useToast } from "@/components/ui/Toast";
 import { WindowControls } from "@/components/ui/WindowControls";
@@ -50,6 +50,16 @@ export function MainWindow() {
 
 	const changeLanguage = async (language: LanguageSetting) => {
 		setSettings(await api.setLanguage(language));
+	};
+
+	const changeSelectionMode = async (mode: SelectionMode) => {
+		setSettings(await api.setSelectionMode(mode));
+	};
+
+	/** 每次打开设置都重新拉取：屏幕录制权限可能在系统设置里改过。 */
+	const openSettings = () => {
+		setSettingsOpen(true);
+		void api.getSettings().then(setSettings);
 	};
 
 	const changeOpenAtLogin = async (enabled: boolean) => {
@@ -116,7 +126,7 @@ export function MainWindow() {
 
 				<button
 					type="button"
-					title={t.main.toolbar.openSaveDir}
+					title={isMac ? t.main.toolbar.openSaveDirMac : t.main.toolbar.openSaveDir}
 					className="no-drag group relative min-w-0 flex-1 rounded-2xl border-2 border-transparent bg-gray-100/80 py-3.5 pl-12 pr-4 text-left transition-all duration-300 hover:border-apple-blue/30 hover:bg-white"
 					onClick={() => void api.openSaveDir()}
 				>
@@ -127,7 +137,7 @@ export function MainWindow() {
 					<span className="block truncate text-sm font-bold text-gray-600">{settings?.saveDir ?? " "}</span>
 				</button>
 
-				<Button variant="icon" title={t.main.toolbar.preferences} onClick={() => setSettingsOpen(true)}>
+				<Button variant="icon" title={t.main.toolbar.preferences} onClick={openSettings}>
 					<Settings
 						size={22}
 						strokeWidth={2.5}
@@ -190,6 +200,9 @@ export function MainWindow() {
 					onChangeShortcut={changeShortcut}
 					onChangeLanguage={(language) => void changeLanguage(language)}
 					onChangeOpenAtLogin={(enabled) => void changeOpenAtLogin(enabled)}
+					onChangeSelectionMode={(mode) => void changeSelectionMode(mode)}
+					onOpenOnboarding={() => void api.openOnboarding()}
+					onOpenLogs={() => void api.openLogs()}
 					onRecordingChange={(recording) => void api.suspendShortcut(recording)}
 				/>
 			)}

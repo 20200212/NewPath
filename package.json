@@ -5,24 +5,31 @@
 	"type": "module",
 	"description": "本地优先的桌面截图工具（Electron + React + TypeScript）",
 	"author": "",
-	"license": "UNLICENSED",
+	"license": "GPL-3.0-or-later",
 	"main": "dist-electron/main.js",
 	"scripts": {
 		"dev": "node scripts/build-native.mjs --host && vite",
 		"dev:ui": "vite --config vite.ui.config.ts",
 		"typecheck": "tsc --noEmit --incremental false",
 		"test": "vitest run --exclude \"release/**\"",
+		"test:scroll-stitcher": "node scripts/test-scroll-stitcher.mjs",
 		"build": "tsc && vite build",
 		"verify": "npm run test && npm run build",
 		"build:native": "node scripts/build-native.mjs",
 		"build:win": "npm run build && electron-builder --win --x64",
 		"build:mac": "npm run build:native && npm run build && electron-builder --mac --arm64 --x64",
+		"pack:mac:dir": "npm run build:native && npm run build && electron-builder --mac --dir",
+		"sign:mac:local": "node scripts/sign-mac-local.mjs",
+		"install:mac:local": "npm run pack:mac:dir && node scripts/sign-mac-local.mjs && node scripts/install-mac-local.mjs",
+		"install:mac:check": "node scripts/install-mac-local.mjs --check",
+		"check:mac:signature": "node scripts/check-mac-signature.mjs",
 		"build:linux": "npm run build && electron-builder --linux --x64"
 	},
 	"engines": {
 		"node": "^20.19.0 || >=22.12.0"
 	},
 	"devDependencies": {
+		"@electron/asar": "^3.4.1",
 		"@types/node": "^22.20.5",
 		"@types/react": "^18.3.31",
 		"@types/react-dom": "^18.3.7",

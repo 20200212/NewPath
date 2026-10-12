@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRawWindows, toDisplayLocalPoint, toDisplayLocalWindows } from "./windowRects";
+import { normalizeRawWindows, parseRawWindows, toDisplayLocalPoint, toDisplayLocalWindows } from "./windowRects";
 
 const identity = (rect: { x: number; y: number; width: number; height: number }) => rect;
 
@@ -17,6 +17,22 @@ describe("windowRects", () => {
 		]);
 		expect(parseRawWindows("not json")).toEqual([]);
 		expect(parseRawWindows("{}")).toEqual([]);
+	});
+
+	it("保留 macOS 的窗口编号，丢掉不合法的编号", () => {
+		expect(
+			normalizeRawWindows([
+				{ id: 4821, x: 0, y: 0, width: 100, height: 80, title: "访达" },
+				{ id: 1.5, x: 0, y: 0, width: 100, height: 80, title: "小数" },
+				{ id: "7", x: 0, y: 0, width: 100, height: 80, title: "字符串" },
+			]).map((window) => window.id),
+		).toEqual([4821, undefined, undefined]);
+		const [local] = toDisplayLocalWindows(
+			[{ id: 4821, x: 10, y: 10, width: 100, height: 80, title: "访达" }],
+			{ x: 0, y: 0, width: 1440, height: 900 },
+			identity,
+		);
+		expect(local).toEqual({ id: 4821, title: "访达", rect: { x: 10, y: 10, width: 100, height: 80 } });
 	});
 
 	it("裁剪到显示器并换算成显示器内坐标", () => {

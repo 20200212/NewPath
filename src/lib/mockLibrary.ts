@@ -23,6 +23,9 @@ export type MainApi = Pick<
 	| "openSaveDir"
 	| "setLanguage"
 	| "setOpenAtLogin"
+	| "setSelectionMode"
+	| "openOnboarding"
+	| "openLogs"
 	| "minimizeWindow"
 	| "closeWindow"
 >;
@@ -46,6 +49,9 @@ let settings: SettingsState = {
 	locale: "zh-CN",
 	openAtLogin: false,
 	openAtLoginSupported: true,
+	selectionMode: "overlay",
+	onboardingVersion: 1,
+	screenPermission: "denied",
 };
 
 const listeners = new Set<() => void>();
@@ -100,6 +106,12 @@ export const mockMainApi: MainApi = {
 		settings = { ...settings, openAtLogin: enabled };
 		return ok;
 	},
+	setSelectionMode: async (selectionMode) => {
+		settings = { ...settings, selectionMode };
+		return { ...settings };
+	},
+	openOnboarding: async () => log("openOnboarding"),
+	openLogs: async () => log("openLogs"),
 	minimizeWindow: async () => log("minimizeWindow"),
 	closeWindow: async () => log("closeWindow"),
 };

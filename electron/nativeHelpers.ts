@@ -4,7 +4,7 @@ import path from "node:path";
 import { app } from "electron";
 
 /** macOS 上随应用分发的 Swift 小工具，源码在 native/，由 scripts/build-native.mjs 编译。 */
-export type NativeHelper = "newpath-window-list" | "newpath-ocr";
+export type NativeHelper = "newpath-window-list" | "newpath-ocr" | "newpath-capture-agent";
 
 /** 打包后在 Resources/native/ 下；开发模式用 build/native/ 里刚编译出来的。找不到时返回 null。 */
 export function nativeHelperPath(name: NativeHelper): string | null {

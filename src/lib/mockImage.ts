@@ -21,8 +21,8 @@ export function createMockScreenshot(width: number, height: number): string {
 /** dev:ui 下模拟几个窗口，用来调试悬停识别。按 Z 序从前往后。 */
 export function createMockWindows(width: number, height: number): DetectedWindow[] {
 	return [
-		{ title: "记事本", rect: { x: Math.round(width * 0.55), y: Math.round(height * 0.2), width: 360, height: 260 } },
-		{ title: "浏览器", rect: { x: Math.round(width * 0.1), y: Math.round(height * 0.12), width: Math.round(width * 0.6), height: Math.round(height * 0.65) } },
-		{ title: "桌面应用", rect: { x: 0, y: 0, width, height: height - 48 } },
+		{ id: 101, title: "记事本", rect: { x: Math.round(width * 0.55), y: Math.round(height * 0.2), width: 360, height: 260 } },
+		{ id: 102, title: "浏览器", rect: { x: Math.round(width * 0.1), y: Math.round(height * 0.12), width: Math.round(width * 0.6), height: Math.round(height * 0.65) } },
+		{ id: 103, title: "桌面应用", rect: { x: 0, y: 0, width, height: height - 48 } },
 	];
 }

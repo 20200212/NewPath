@@ -7,6 +7,8 @@ export interface RawWindow {
 	width: number;
 	height: number;
 	title: string;
+	/** macOS 的窗口编号（CGWindowID）；Windows 上没有。 */
+	id?: number;
 }
 
 /** 裁剪到显示器之后小于这个尺寸（CSS 像素）的窗口不参与识别。 */
@@ -20,11 +22,16 @@ export function parseRawWindows(json: string): RawWindow[] {
 	} catch {
 		return [];
 	}
+	return normalizeRawWindows(data);
+}
+
+/** 校验已经解析好的窗口列表（截图进程的 windows 命令直接返回数组）。 */
+export function normalizeRawWindows(data: unknown): RawWindow[] {
 	if (!Array.isArray(data)) return [];
 	const result: RawWindow[] = [];
 	for (const item of data) {
 		if (!item || typeof item !== "object") continue;
-		const { x, y, width, height, title } = item as Record<string, unknown>;
+		const { x, y, width, height, title, id } = item as Record<string, unknown>;
 		const numbers = [x, y, width, height];
 		if (!numbers.every((value) => typeof value === "number" && Number.isFinite(value))) continue;
 		if ((width as number) <= 0 || (height as number) <= 0) continue;
@@ -34,6 +41,7 @@ export function parseRawWindows(json: string): RawWindow[] {
 			width: width as number,
 			height: height as number,
 			title: typeof title === "string" ? title : "",
+			...(typeof id === "number" && Number.isInteger(id) && id > 0 ? { id } : {}),
 		});
 	}
 	return result;
@@ -65,6 +73,7 @@ export function toDisplayLocalWindows(
 				height: Math.round(bottom - top),
 			},
 			title: window.title,
+			...(window.id !== undefined ? { id: window.id } : {}),
 		});
 	}
 	return result;

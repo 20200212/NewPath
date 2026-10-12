@@ -1,6 +1,6 @@
 import type { Locale } from "../../../electron/ipcTypes";
 
-/** 选区窗口和钉图窗口。 */
+/** 选区窗口、滚动截图面板和钉图窗口。 */
 const zhCN = {
 	region: {
 		hintCapture: "单击选择窗口，拖动选择区域",
@@ -13,6 +13,28 @@ const zhCN = {
 		copyPath: "复制路径",
 		copyImage: "复制图片",
 		pin: "钉住",
+		scroll: "滚动截图",
+		startScroll: "开始滚动截图",
+		hintScroll: "框选要滚动截图的区域，然后滚动页面",
+		hintScrollKey: "S 滚动截图",
+		hintScrollExit: "S 返回普通截图",
+	},
+	scroll: {
+		title: "滚动截图",
+		dragHint: "拖动标题栏移开面板",
+		screens: (count: string) => `约 ${count} 屏`,
+		previewEmpty: "开始滚动后在这里预览",
+		status: {
+			waiting: "向下滚动页面，开始拼接",
+			capturing: "继续滚动，随时可以完成",
+			behind: "滚动太快了，慢一点就能跟上",
+			lost: "跟丢了，请滚回上次停下的位置",
+			full: "已达到最大长度，可以完成了",
+			finishing: "正在生成长截图…",
+			error: "滚动截图失败了，稍后会自动结束",
+		},
+		cancel: "取消",
+		finish: "完成",
 	},
 	pin: {
 		alt: "钉图",
@@ -40,6 +62,28 @@ export const capture: Record<Locale, typeof zhCN> = {
 			copyPath: "複製路徑",
 			copyImage: "複製圖片",
 			pin: "釘選",
+			scroll: "捲動截圖",
+			startScroll: "開始捲動截圖",
+			hintScroll: "框選要捲動截圖的區域，然後捲動頁面",
+			hintScrollKey: "S 捲動截圖",
+			hintScrollExit: "S 返回一般截圖",
+		},
+		scroll: {
+			title: "捲動截圖",
+			dragHint: "拖曳標題列移開面板",
+			screens: (count: string) => `約 ${count} 個畫面`,
+			previewEmpty: "開始捲動後在這裡預覽",
+			status: {
+				waiting: "向下捲動頁面，開始拼接",
+				capturing: "繼續捲動，隨時可以完成",
+				behind: "捲動太快了，慢一點就能跟上",
+				lost: "跟丟了，請捲回上次停下的位置",
+				full: "已達到最大長度，可以完成了",
+				finishing: "正在產生長截圖…",
+				error: "捲動截圖失敗了，稍後會自動結束",
+			},
+			cancel: "取消",
+			finish: "完成",
 		},
 		pin: {
 			alt: "釘圖",
@@ -64,6 +108,28 @@ export const capture: Record<Locale, typeof zhCN> = {
 			copyPath: "Copy path",
 			copyImage: "Copy image",
 			pin: "Pin",
+			scroll: "Scrolling capture",
+			startScroll: "Start scrolling capture",
+			hintScroll: "Select the area to capture, then scroll the page",
+			hintScrollKey: "S for scrolling capture",
+			hintScrollExit: "S for normal capture",
+		},
+		scroll: {
+			title: "Scrolling Capture",
+			dragHint: "Drag the title to move",
+			screens: (count: string) => `≈ ${count} screens`,
+			previewEmpty: "A preview appears once you scroll",
+			status: {
+				waiting: "Scroll down to start stitching",
+				capturing: "Keep scrolling. Finish whenever you like.",
+				behind: "Scrolling too fast. Slow down to catch up.",
+				lost: "Lost the spot. Scroll back to where you stopped.",
+				full: "Reached the maximum length",
+				finishing: "Building the long screenshot…",
+				error: "Scrolling capture failed and will end shortly",
+			},
+			cancel: "Cancel",
+			finish: "Done",
 		},
 		pin: {
 			alt: "Pinned screenshot",
