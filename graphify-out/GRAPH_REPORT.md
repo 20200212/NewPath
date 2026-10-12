@@ -1,16 +1,16 @@
 # Graph Report - NewPath  (2026-10-12)
 
 ## Corpus Check
-- 157 files · ~70,856 words
+- 157 files · ~72,661 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 706 nodes · 1375 edges · 35 communities (33 shown, 2 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 41 edges (avg confidence: 0.8)
+- 703 nodes · 1368 edges · 36 communities (34 shown, 2 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 43 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7b613df4`
+- Built from commit: `097128c1`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -48,32 +48,33 @@
 - [[_COMMUNITY_Community 30|Community 30]]
 - [[_COMMUNITY_Community 31|Community 31]]
 - [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 35|Community 35]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `writeDiagnostic()` - 34 edges
 2. `OnboardingController` - 23 edges
 3. `CaptureAgent` - 20 edges
-4. `mt()` - 19 edges
-5. `startCapture()` - 18 edges
-6. `ScrollStitcher` - 18 edges
-7. `ScrollCaptureController` - 17 edges
-8. `ScrollCapture` - 17 edges
+4. `ScrollStitcher` - 19 edges
+5. `mt()` - 19 edges
+6. `startCapture()` - 18 edges
+7. `ScrollCapture` - 17 edges
+8. `ScrollCaptureController` - 17 edges
 9. `scripts` - 17 edges
 10. `serializeError()` - 15 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `LoadedSession` --references--> `CaptureMode`  [EXTRACTED]
   src/components/screenshot/RegionSelector.tsx → electron/ipcTypes.ts
-- `watchPower()` --calls--> `writeDiagnostic()`  [EXTRACTED]
-  electron/main.ts → electron/diagnostics.ts
 - `SettingsModalProps` --references--> `LanguageSetting`  [EXTRACTED]
   src/components/main/SettingsModal.tsx → electron/ipcTypes.ts
 - `SettingsModalProps` --references--> `SelectionMode`  [EXTRACTED]
   src/components/main/SettingsModal.tsx → electron/ipcTypes.ts
 - `SettingsModalProps` --references--> `ActionResult`  [EXTRACTED]
   src/components/main/SettingsModal.tsx → electron/ipcTypes.ts
+- `SettingsModalProps` --references--> `SettingsState`  [EXTRACTED]
+  src/components/main/SettingsModal.tsx → electron/ipcTypes.ts
 
-## Communities (35 total, 2 thin omitted)
+## Communities (36 total, 2 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.08
@@ -93,11 +94,11 @@ Nodes (30): AgentEvent, Rect, AGENT_STATUSES, clamp(), clampScrollPanelPosition(
 
 ### Community 4 - "Community 4"
 Cohesion: 0.10
-Nodes (27): captureWithDesktopCapturer(), displayPixels(), execScreencapture(), FrameSource, imageFrame(), readImage(), ScreenCapturer, temporaryPath() (+19 more)
+Nodes (28): captureWithDesktopCapturer(), displayPixels(), execScreencapture(), FrameSource, imageFrame(), readImage(), ScreenCapturer, temporaryPath() (+20 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.06
-Nodes (23): CaptureFrame, diagnosticsDir(), Point, APP_ROOT, atLogin, CAPTURE_ACTIONS, capturer, CaptureSession (+15 more)
+Cohesion: 0.07
+Nodes (16): APP_ROOT, atLogin, CAPTURE_ACTIONS, capturer, command, devOptions, __dirname, MAIN_TRAFFIC_LIGHTS (+8 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.10
@@ -105,7 +106,7 @@ Nodes (10): OnboardingStep, OnboardingController, Box, HELPER_SIZE, ONBOARDING_S
 
 ### Community 7 - "Community 7"
 Cohesion: 0.11
-Nodes (11): Equatable, Features, Outcome, appended, behind, full, lost, unchanged (+3 more)
+Nodes (10): Equatable, Analysis, Outcome, appended, behind, full, lost, unchanged (+2 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.12
@@ -133,23 +134,23 @@ Nodes (15): listMacWindows(), createCaptureAgent(), NativeHelper, nativeHelperPa
 
 ### Community 14 - "Community 14"
 Cohesion: 0.16
-Nodes (9): expect(), expectEqual(), firstDifferentRow(), Image, makePage(), scrollThrough(), Seeded, Session (+1 more)
+Nodes (9): Bitmap, check(), expectSame(), firstDifference(), frame(), makePage(), Random, Run (+1 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.11
 Nodes (19): devDependencies, autoprefixer, electron, @electron/asar, electron-builder, lucide-react, postcss, react (+11 more)
 
 ### Community 16 - "Community 16"
-Cohesion: 0.15
-Nodes (13): CaptureAction, CaptureMode, DetectedWindow, createMockScreenshot(), createMockWindows(), appShortcut(), Drag, HANDLE_CURSORS (+5 more)
+Cohesion: 0.13
+Nodes (16): CaptureFrame, CaptureAction, CaptureMode, DetectedWindow, Point, CaptureSession, createMockScreenshot(), createMockWindows() (+8 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.12
 Nodes (17): scripts, build, build:linux, build:mac, build:native, build:win, check:mac:signature, dev (+9 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.16
-Nodes (14): changeShortcut(), chooseSaveDir(), getSettingsState(), loginItemOptions(), markOnboardingSeen(), notifyMain(), persistSettings(), repairShortcut() (+6 more)
+Cohesion: 0.32
+Nodes (8): changeShortcut(), markOnboardingSeen(), persistSettings(), repairShortcut(), syncShortcut(), tryRegister(), unregisterCaptureShortcut(), saveSettings()
 
 ### Community 19 - "Community 19"
 Cohesion: 0.23
@@ -184,8 +185,8 @@ Cohesion: 0.29
 Nodes (5): code:bash (npm run dev                                   # Vite + Elect), 代码约定, 命令, 新增 IPC 的步骤, 架构要点
 
 ### Community 27 - "Community 27"
-Cohesion: 0.48
-Nodes (5): AppSettings, isSelectionMode(), loadSettings(), normalizeSettings(), defaults
+Cohesion: 0.29
+Nodes (8): diagnosticsDir(), AppSettings, handleMain(), registerIpc(), isSelectionMode(), loadSettings(), normalizeSettings(), defaults
 
 ### Community 28 - "Community 28"
 Cohesion: 0.33
@@ -199,8 +200,12 @@ Nodes (5): createWindow(), getMainWindow(), getRegionWindow(), openPreviewWindow
 Cohesion: 0.67
 Nodes (3): allowScripts, electron@39.8.10, electron-winstaller@5.4.0
 
+### Community 35 - "Community 35"
+Cohesion: 0.33
+Nodes (6): chooseSaveDir(), getSettingsState(), loginItemOptions(), notifyMain(), setOpenAtLogin(), startWatching()
+
 ## Knowledge Gaps
-- **201 isolated node(s):** `code:bash (npm run dev                                   # Vite + Elect)`, `架构要点`, `新增 IPC 的步骤`, `代码约定`, `与 Windows 版的差别` (+196 more)
+- **201 isolated node(s):** `QuickShot`, `unchanged`, `waiting`, `appended`, `behind` (+196 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **2 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -211,13 +216,13 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Why does `OnboardingController` connect `Community 6` to `Community 12`, `Community 5`?**
   _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Why does `writeDiagnostic()` connect `Community 4` to `Community 3`, `Community 5`, `Community 6`, `Community 9`, `Community 13`, `Community 18`, `Community 20`?**
+- **Why does `writeDiagnostic()` connect `Community 4` to `Community 3`, `Community 5`, `Community 6`, `Community 9`, `Community 13`, `Community 18`, `Community 20`, `Community 27`?**
   _High betweenness centrality (0.020) - this node is a cross-community bridge._
-- **What connects `code:bash (npm run dev                                   # Vite + Elect)`, `架构要点`, `新增 IPC 的步骤` to the rest of the system?**
+- **Are the 2 inferred relationships involving `ScrollStitcher` (e.g. with `.init()` and `.init()`) actually correct?**
+  _`ScrollStitcher` has 2 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `QuickShot`, `unchanged`, `waiting` to the rest of the system?**
   _201 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
   _Cohesion score 0.07518796992481203 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.05909090909090909 - nodes in this community are weakly interconnected._
-- **Should `Community 2` be split into smaller, more focused modules?**
-  _Cohesion score 0.08245981830887492 - nodes in this community are weakly interconnected._

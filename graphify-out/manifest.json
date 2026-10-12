@@ -55,13 +55,13 @@
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/Support.swift": {
-    "mtime": 1791770470.5029376,
-    "ast_hash": "3be53c3a85bb43d4cde0a5f8473c36d0",
+    "mtime": 1791786642.1175005,
+    "ast_hash": "be363b5adc21d5e0f396cca123995068",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/ScrollCapture.swift": {
-    "mtime": 1791770551.0572517,
-    "ast_hash": "37a702b524d194d377fb6c1291506b27",
+    "mtime": 1791786668.8060203,
+    "ast_hash": "f4bf5d6715f7ce4d6bedb758609938e2",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/main.swift": {
@@ -70,18 +70,18 @@
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/ScrollStitcher.swift": {
-    "mtime": 1791770430.0012012,
-    "ast_hash": "2a784bc2a1ed17090b62287a753347fb",
+    "mtime": 1791786591.6717756,
+    "ast_hash": "e4bdd8878d7db1bc57ce62b9693a7144",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/tests/main.swift": {
-    "mtime": 1791770404.455408,
-    "ast_hash": "6ab0fd7562292fad1245b013278b87c3",
+    "mtime": 1791786754.3342974,
+    "ast_hash": "7481d8ef46606b5f7cc13708c213b847",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/scripts/mac-signing-policy.mjs": {
-    "mtime": 1791769943.6788583,
-    "ast_hash": "9e857324e44a644106008c816617a138",
+    "mtime": 1791771874.3221233,
+    "ast_hash": "8334d82b75578323b467754956362477",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/scripts/mac-sign.mjs": {
@@ -100,8 +100,8 @@
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/scripts/mac-signing-policy.test.mjs": {
-    "mtime": 1791770081.2303813,
-    "ast_hash": "6baa7868fae377472304569417f0ce46",
+    "mtime": 1791771874.3223627,
+    "ast_hash": "cd1b592456f07349b4da05bcb5c2ae0c",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/scripts/sign-mac-local.mjs": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/THIRD_PARTY_NOTICES.md": {
-    "mtime": 1791771147.593612,
-    "ast_hash": "fb2e3e7ff40f74191e0f0cb323bd5f59",
+    "mtime": 1791786814.0362816,
+    "ast_hash": "99034494d246f89f18e2091449b72516",
     "semantic_hash": ""
   },
   "/Users/multimedia/githubxm/NewPath/README.md": {
