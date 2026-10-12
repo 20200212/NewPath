@@ -27,10 +27,13 @@ export function isStableRequirement(requirement) {
 	return /\bcertificate (?:leaf|root)\s*=\s*H"[0-9a-f]{40}"/i.test(requirement) || /\banchor apple\b/.test(requirement);
 }
 
-/** sign-mac-local.mjs 写进应用的签名身份：只认这个 Bundle ID 加这张证书。 */
+/**
+ * sign-mac-local.mjs 写进应用的签名身份：只认这个 Bundle ID 加这张证书。
+ * 哈希用小写，和 `codesign -d -r-` 读回来的写法一致，签完可以直接比较。
+ */
 export function localSigningRequirement(bundleId, certificateSha1) {
 	if (!/^[0-9A-F]{40}$/i.test(certificateSha1)) throw new Error(`证书 SHA-1 格式不对：${certificateSha1}`);
-	return `identifier "${bundleId}" and certificate leaf = H"${certificateSha1.toUpperCase()}"`;
+	return `identifier "${bundleId}" and certificate leaf = H"${certificateSha1.toLowerCase()}"`;
 }
 
 /**

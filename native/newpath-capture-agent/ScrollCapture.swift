@@ -16,10 +16,9 @@ import ScreenCaptureKit
 @available(macOS 12.3, *)
 final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     /// 预览图最大宽高（像素）；太长时只保留最新的部分。
-    private static let previewWidth: CGFloat = 480
-    private static let previewHeight: CGFloat = 720
-    private static let previewQuality = 0.8
-    private static let previewInterval: TimeInterval = 0.3
+    private static let previewSize = CGSize(width: 432, height: 640)
+    private static let previewQuality = 0.82
+    private static let previewInterval: TimeInterval = 0.35
 
     let session: Int
     private let queue = DispatchQueue(label: "newpath.capture-agent.scroll")
@@ -65,7 +64,7 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
             configuration.colorSpaceName = CGColorSpace.sRGB
             // 帧率高一些，两帧之间滚动的距离就小，触控板快速一甩也能对上
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-            configuration.queueDepth = 4
+            configuration.queueDepth = 5
             if #available(macOS 14.0, *) { configuration.captureResolution = .best }
             let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
             do {
@@ -218,13 +217,14 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
     func finish(path: String, id: Int) {
         queue.async {
             self.halt()
-            guard let (pixels, rows) = self.stitcher.finish() else {
+            guard let rows = self.stitcher.finish() else {
                 fail(id, AgentError.noFrames)
                 return
             }
             let width = self.stitcher.width
-            let written = withBGRAImage(pixels, width: width, height: rows) { image in
-                image.map { writeImage($0, to: path) } ?? false
+            let written = self.stitcher.output.withUnsafeBytes { buffer -> Bool in
+                guard let image = bgraImage(buffer.baseAddress!, width: width, rows: rows) else { return false }
+                return writeImage(image, to: path)
             }
             if written {
                 reply(id, ["width": width, "height": rows, "frames": self.frames, "stats": self.stats()])
@@ -244,11 +244,11 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         stream = nil
     }
 
-    /// 诊断用：一共多少帧、丢失了多少帧、丢失了几次、最长一次丢了多少帧。
+    /// 诊断用：一共多少帧、丢失了多少帧、丢失了几次、最长一次丢了多少帧，以及每次丢失时的情况。
     private func stats() -> [String: Any] {
         [
-            "frames": stitcher.framesSeen, "lost": stitcher.framesLost, "losses": stitcher.lossEpisodes,
-            "longestLoss": stitcher.longestLoss,
+            "frames": stitcher.framesSeen, "lost": stitcher.framesLost, "losses": stitcher.lostEpisodes,
+            "longestLoss": stitcher.longestLoss, "notes": stitcher.lossNotes,
         ]
     }
 
@@ -257,8 +257,7 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         frames += 1
         switch stitcher.add(base, bytesPerRow: bytesPerRow) {
         case .unchanged:
-            // 回到了能对上的位置
-            if status == "lost" { status = stitcher.projectedHeight > stitcher.height ? "capturing" : "waiting" }
+            break
         case .waiting:
             status = "waiting"
             schedulePreview()
@@ -270,10 +269,8 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         case .lost:
             status = "lost"
         case .full:
-            if status != "full" {
-                status = "full"
-                schedulePreview()
-            }
+            status = "full"
+            schedulePreview()
         }
         if status != reportedStatus || stitcher.projectedHeight != reportedHeight { report() }
     }
@@ -309,19 +306,28 @@ final class ScrollCapture: NSObject, SCStreamOutput, SCStreamDelegate {
         guard let previewPath else { return }
         previewWrittenAt = Date()
         let width = stitcher.width
-        let scale = min(1, Self.previewWidth / CGFloat(width))
-        let (pixels, rows) = stitcher.newestRows(Int((Self.previewHeight / scale).rounded(.up)))
-        guard rows > 0 else { return }
-        let targetWidth = max(1, Int((CGFloat(width) * scale).rounded()))
-        let targetHeight = max(1, Int((CGFloat(rows) * scale).rounded()))
-        let written = withBGRAImage(pixels, width: width, height: rows) { image -> Bool in
-            guard let image, let context = bgraContext(nil, width: targetWidth, height: targetHeight) else { return false }
+        let image: CGImage? = stitcher.withSegments { segments in
+            let total = segments.reduce(0) { $0 + $1.rows }
+            guard total > 0 else { return nil }
+            // 和面板上显示的一样宽；长图只保留最新的部分。
+            let scale = min(1, Self.previewSize.width / CGFloat(width))
+            let targetWidth = max(1, Int((CGFloat(width) * scale).rounded()))
+            let targetHeight = max(1, min(Int(Self.previewSize.height), Int((CGFloat(total) * scale).rounded())))
+            guard let context = bgraContext(nil, width: targetWidth, height: targetHeight) else { return nil }
             context.interpolationQuality = .medium
-            context.draw(image, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
-            guard let preview = context.makeImage() else { return false }
-            return writeImage(preview, to: previewPath, jpegQuality: Self.previewQuality)
+            var above = 0
+            for segment in segments {
+                if let part = bgraImage(segment.pixels, width: width, rows: segment.rows) {
+                    // Core Graphics 的坐标从底部算起，最新的行落在上下文里，旧的从顶上掉出去。
+                    let y = CGFloat(total - above - segment.rows) * scale
+                    context.draw(
+                        part, in: CGRect(x: 0, y: y, width: CGFloat(targetWidth), height: CGFloat(segment.rows) * scale))
+                }
+                above += segment.rows
+            }
+            return context.makeImage()
         }
-        guard written else { return }
+        guard let image, writeImage(image, to: previewPath, jpegQuality: Self.previewQuality) else { return }
         previewVersion += 1
         report()
     }

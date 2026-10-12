@@ -45,8 +45,10 @@ describe("判断固定签名身份", () => {
 		expect(isStableRequirement(requirement)).toBe(expected);
 	});
 
-	it("本机签名钉住叶子证书，哈希统一大写", () => {
-		expect(localSigningRequirement("com.newpath.screenshot", hash.toLowerCase())).toBe(stable);
+	it("本机签名钉住叶子证书，哈希统一小写（和 codesign 读回来的一致）", () => {
+		expect(localSigningRequirement("com.newpath.screenshot", hash)).toBe(
+			`identifier "com.newpath.screenshot" and certificate leaf = H"${hash.toLowerCase()}"`,
+		);
 		expect(isStableRequirement(localSigningRequirement("com.newpath.screenshot", hash))).toBe(true);
 		expect(() => localSigningRequirement("com.newpath.screenshot", "NewPath Signing")).toThrow("SHA-1");
 	});

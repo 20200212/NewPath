@@ -2,66 +2,99 @@ import Foundation
 
 /// 把正在滚动的一块区域逐帧拼成一张长图。
 ///
-/// 帧是 32 位 BGRA（与 ScreenCaptureKit 一致），每帧 `width × height` 像素。做法：
-/// - 每帧先算出每一行、每个列段的哈希。新帧和“参照帧”（上一张拼进长图的帧）比较，
-///   顶部、底部逐行完全相同的部分是不动的工具栏 / 页脚，不参与匹配；
-/// - 中间部分里，参照帧中只出现一次的列段哈希当作锚点，新帧里哈希相同的列段给“滚动了几行”投票，
-///   得票最多且明显领先的就是滚动量。按列段投票，一行里局部变化（悬停高亮、不跟着滚的侧栏）不影响其余部分；
-/// - 投票失败时再按每段的亮度和做一次带容差的搜索，兜住整体颜色轻微变化的情况；
-/// - 长图以第一帧为坐标原点：偏移为 s 的帧，第 r 行落在长图第 r + s 行。每张拼进来的帧都覆盖它显示的行，
-///   所以每一行保留最后一次看到的样子（占位图换成加载好的图）；顶部栏来自第一帧，底部栏来自滚得最远的那一帧；
-/// - 第一次向下滚动之前，一直以最新的一帧为起点：窗口激活后的变化、用户先往上滚到想要的起点，都不会被拼进去。
+/// 帧是 32 位 BGRA。每帧都和它的上一帧（只早几十毫秒）比较，所以原地变化的内容
+/// （懒加载的图片、渐显、跳动的时钟、悬停高亮）不会让拼接器一直拿着过期的参照帧。
+/// 顶部、底部不动的行（工具栏、吸顶标题、页脚）不参与搜索；行按列段比较，
+/// 一行里局部变化不会挡住其余部分的匹配。列段像素基本一致、或者形状相关时算匹配，
+/// 所以滚进来时逐渐变深的文字也能对上；其余部分在滚、自己不动的列（吸顶侧栏）完全不参与匹配。
+///
+/// 长图是以第一帧为坐标的画布。每张拼进来的帧都把它显示的行画到画布上，所以每一行保留最后一次
+/// 看到的样子：加载好的图片替换占位图，浮动按钮只留在最后看到它的地方。固定的顶部栏来自第一帧，
+/// 固定的底部栏来自滚得最远的那一帧；吸顶侧栏只出现一次，下面是它的背景。
+///
+/// 第一次向下滚动之前，拼接器一直跟着最新的一帧：窗口可以先稳定下来（NewPath 让开后它才变成活动窗口），
+/// 用户也可以先往上滚到想要开始的地方。
 ///
 /// 纯逻辑，不依赖 ScreenCaptureKit，可以单独编译测试（见 tests/main.swift）。
 final class ScrollStitcher {
     enum Outcome: Equatable {
-        /// 画面没有滚动（可能有原地变化）。
+        /// 画面没有滚动，内容可能原地变了。
         case unchanged
-        /// 还没开始向下滚，这一帧成为新的起点。
+        /// 还没开始，这一帧成为新的起点。
         case waiting
         /// 长图增加了这么多行。
         case appended(Int)
-        /// 往回滚到了已经拍过的地方。
+        /// 往回滚到了长图里已经有的行。
         case behind
-        /// 和参照帧找不到重叠（滚得太快，或者画面整个变了）。
+        /// 和上一帧找不到重叠，比如滚得非常快。
         case lost
-        /// 已经达到最大高度，之后的帧都不再处理。
+        /// 长图达到 `maxHeight`，之后的帧都不再处理。
         case full
     }
+
+    /// 参与比较的列的亮度，以及每行、每个列段的摘要。
+    private struct Analysis {
+        var luma: [UInt8]
+        var hashes: [UInt64]
+        /// 有细节的行，即不是一种纯色。
+        var detailed: [Bool]
+        /// 同上，按列段，每行 `segments` 个。
+        var segmentDetailed: [Bool]
+        var segmentHashes: [UInt64]
+        /// 每行在 `profileBands` 个列带上的亮度和。
+        var profile: [Int32]
+    }
+
+    private static let segments = 16
+    private static let profileBands = 8
+    /// 亮度差超过这么多才算真的不同，而不是噪声。
+    private static let tolerance: Int16 = 24
+    /// 有细节的列段里，至少要有这么大比例对得上才算匹配。
+    private static let minimumScore = 0.6
+    /// 精确匹配的列段达到这么多，单凭它们就足以确定位移。
+    private static let convincingVotes = 24
 
     let width: Int
     let height: Int
     let maxHeight: Int
+    /// 从左边算起参与比较的列数。剩下的部分（滚动时出现浮动滚动条的地方）照样拷贝，但不比较。
+    let columns: Int
 
-    // 诊断用的统计
+    /// 开发用：描述每一步的判断。截图进程里为 nil。
+    var trace: ((String) -> Void)?
+
+    /// 截图过程中是画布；`finish()` 之后是拼好的长图。
+    private(set) var output: [UInt8] = []
+    private(set) var outputRows = 0
+    private(set) var isFull = false
+    /// 是否已经开始，即是否向下滚过。
+    private(set) var started = false
+
+    private var previous: Analysis?
+    /// 上一帧的像素，开始之前一直保留。
+    private var previousPixels: [UInt8] = []
+    /// 上一帧相对第一帧滚了多远。
+    private var previousScroll = 0
+    private var lastShift = 0
+    /// 连续多少帧没能拼上。
+    private var lostStreak = 0
+    /// 诊断日志用的数字，从不包含图像内容。
     private(set) var framesSeen = 0
     private(set) var framesLost = 0
-    /// 连续丢失算一次。
-    private(set) var lossEpisodes = 0
-    /// 最长一次连续丢失了多少帧。
+    private(set) var lostEpisodes = 0
     private(set) var longestLoss = 0
-    private var currentLoss = 0
-
-    private let rowBytes: Int
-    private let segments: Int
-    /// 各列段的起始列，最后一项是参与匹配的列数（右侧忽略的列不算）。
-    private let segmentStarts: [Int]
-    private let canvas: RowStore
-
-    private var anchor: Features?
-    /// 参照帧在长图里的偏移。
-    private var anchorOffset = 0
-    /// 拼进来的帧里偏移最大的那个。
-    private var maxOffset = 0
-    /// 偏移最大的那一帧的完整像素，结束时用它的底部栏。
-    private var bottomFrame: [UInt8]
-    /// bottomFrame 拼进来时，底部有多少行没有画进长图（当时估计的底部栏高度）。
-    private var bottomFrameFooter = 0
-    private var started = false
-    private var isFull = false
-    /// 顶部 / 底部固定不动的行数；第一次检测到滚动之前未知。只会变小。
-    private var header: Int?
-    private var footer: Int?
+    /// 每次丢失时第一帧的情况，例如 "f212 band 1180 max 1062 last 240 best 310@0.41/12v still 0.08"。
+    private(set) var lossNotes: [String] = []
+    private var attempt = ""
+    /// 页面滚动时不动的列段（吸顶侧栏）：它们说明不了滚动，匹配时跳过。
+    private var stillColumns = [Bool](repeating: false, count: segments)
+    /// 帧里这一行以上是固定的顶部栏，取自第一帧。
+    private var headerRows = 0
+    private var canvasRows = 0
+    /// 滚得最远的那一帧提供固定的底部栏。
+    private var deepestScroll = 0
+    private var deepestBottom = 0
+    private var footer: [UInt8] = []
 
     /// - Parameter ignoredRight: 右侧不参与匹配的列数，用来避开滚动时才出现的浮动滚动条。
     init(width: Int, height: Int, maxHeight: Int, ignoredRight: Int = 0) {
@@ -69,335 +102,547 @@ final class ScrollStitcher {
         self.width = width
         self.height = height
         self.maxHeight = max(height, maxHeight)
-        rowBytes = width * 4
-        let matched = max(1, width - max(0, ignoredRight))
-        let count = max(1, min(8, matched / 16))
-        segments = count
-        segmentStarts = (0...count).map { $0 * matched / count }
-        canvas = RowStore(rowBytes: width * 4)
-        bottomFrame = [UInt8](repeating: 0, count: width * height * 4)
+        columns = max(1, width - min(max(0, ignoredRight), width / 4))
     }
+
+    /// 最近拼上的那一帧相对第一帧滚了多少行。
+    var scrollOffset: Int { previousScroll }
 
     /// 现在结束的话长图有多高。
     var projectedHeight: Int {
-        framesSeen == 0 ? 0 : min(maxHeight, height + maxOffset)
+        guard previous != nil else { return 0 }
+        return started ? min(maxHeight, deepestScroll + height) : height
     }
 
     /// 加入一帧。`base` 指向第一行，每行 `bytesPerRow` 字节（不小于 width * 4）。
     func add(_ base: UnsafeRawPointer, bytesPerRow: Int) -> Outcome {
         if isFull { return .full }
         framesSeen += 1
-        let current = Features(base, bytesPerRow: bytesPerRow, height: height, segmentStarts: segmentStarts)
-        guard let reference = anchor else {
-            restart(base, bytesPerRow: bytesPerRow, features: current)
+        let frame = analyze(base, bytesPerRow: bytesPerRow)
+        guard let last = previous else {
+            follow(frame, base, bytesPerRow: bytesPerRow)
             return .waiting
         }
 
-        // 顶部、底部逐行相同的部分
         var top = 0
-        while top < height && reference.rowHash[top] == current.rowHash[top] { top += 1 }
+        while top < height && rowStays(last, frame, top) { top += 1 }
         if top == height { return .unchanged }
         var bottom = height
-        while bottom > top && reference.rowHash[bottom - 1] == current.rowHash[bottom - 1] { bottom -= 1 }
+        while bottom > top && rowStays(last, frame, bottom - 1) { bottom -= 1 }
 
-        guard let shift = findShift(reference, current, top: top, bottom: bottom) else {
-            // 只有一小块变了又对不上：多半是图片加载、动画这类原地变化
-            if bottom - top <= height * 35 / 100 {
-                resetLoss()
-                return inPlace(base, bytesPerRow: bytesPerRow, features: current)
+        let found = findShift(last, frame, top: top, bottom: bottom)
+        trace?("band \(top)..<\(bottom) shift \(found.map(String.init) ?? "none")")
+        guard let shift = found else {
+            if started {
+                lostStreak += 1
+                framesLost += 1
+                longestLoss = max(longestLoss, lostStreak)
+                if lostStreak == 1 {
+                    lostEpisodes += 1
+                    if lossNotes.count < 12 { lossNotes.append("f\(framesSeen) band \(top)..<\(bottom) last \(lastShift) \(attempt)") }
+                }
+                return .lost
             }
-            framesLost += 1
-            currentLoss += 1
-            if currentLoss == 1 { lossEpisodes += 1 }
-            longestLoss = max(longestLoss, currentLoss)
-            return .lost
+            follow(frame, base, bytesPerRow: bytesPerRow)
+            return .waiting
         }
-        resetLoss()
-        if shift == 0 { return inPlace(base, bytesPerRow: bytesPerRow, features: current) }
-
-        // 滚动过的两帧里，顶部、底部相同的行才可能是固定栏；取历次的最小值
-        header = min(header ?? top, top, height / 2)
-        footer = min(footer ?? (height - bottom), height - bottom, height / 2)
         if !started {
-            if shift < 0 {
-                restart(base, bytesPerRow: bytesPerRow, features: current)
+            guard shift > 0 else {
+                follow(frame, base, bytesPerRow: bytesPerRow)
                 return .waiting
             }
-            started = true
+            begin(top: top, bottom: bottom)
         }
 
-        let before = projectedHeight
-        let previousMax = maxOffset
-        let offset = anchorOffset + shift
-        place(base, bytesPerRow: bytesPerRow, features: current, offset: offset)
-        if projectedHeight >= maxHeight {
+        let scroll = previousScroll + shift
+        if scroll + height > maxHeight {
             isFull = true
             return .full
         }
-        if offset > previousMax { return .appended(projectedHeight - before) }
-        return .behind
+        // 永远不在画布已有内容的下面留缺口。原地变化时，变化区上面的行就是页面本身，能填上。
+        if shift != 0 && scroll + max(top, headerRows) > canvasRows { return .lost }
+        let before = projectedHeight
+        if shift != 0 { stillColumns = stillSegments(last, frame, shift: shift, top: top, bottom: bottom) }
+        paint(base, bytesPerRow: bytesPerRow, scroll: scroll, top: top, bottom: bottom, moved: shift != 0, still: stillColumns)
+        previous = frame
+        previousScroll = scroll
+        lostStreak = 0
+        if shift != 0 { lastShift = shift }
+        // 比最深处只差几行，是页面到底后的回弹，不是用户往上滚。
+        if deepestScroll - scroll > height / 10 { return .behind }
+        let grown = projectedHeight - before
+        return grown > 0 ? .appended(grown) : .unchanged
     }
 
-    /// 拼好的长图：BGRA，每行 width * 4 字节。一帧都没有时返回 nil。
-    func finish() -> (pixels: [UInt8], rows: Int)? {
-        let rows = projectedHeight
-        guard rows > 0 else { return nil }
-        return (compose(0..<rows), rows)
+    /// 完成长图并返回它的高度；一帧都没有时返回 nil。之后 `output` 里就是长图（BGRA，每行 width * 4 字节）。
+    func finish() -> Int? {
+        guard previous != nil else { return nil }
+        if started {
+            let rows = min(canvasRows, deepestScroll + deepestBottom)
+            output.removeSubrange((rows * width * 4)...)
+            output.append(contentsOf: footer)
+            outputRows = min(maxHeight, rows + height - deepestBottom)
+            output.removeSubrange((outputRows * width * 4)...)
+        } else {
+            output = previousPixels
+            outputRows = height
+        }
+        previous = nil
+        previousPixels = []
+        footer = []
+        return outputRows
     }
 
-    /// 长图最下面（最新）的至多 `count` 行，给实时预览用。
-    func newestRows(_ count: Int) -> (pixels: [UInt8], rows: Int) {
-        let total = projectedHeight
-        let rows = max(0, min(count, total))
-        return (compose((total - rows)..<total), rows)
-    }
-
-    // MARK: - 拼接
-
-    private func resetLoss() {
-        currentLoss = 0
-    }
-
-    /// 以这一帧为起点重新开始。
-    private func restart(_ base: UnsafeRawPointer, bytesPerRow: Int, features: Features) {
-        canvas.removeAll()
-        anchor = features
-        anchorOffset = 0
-        maxOffset = 0
-        paint(base, bytesPerRow: bytesPerRow, rows: 0..<height, offset: 0, floor: 0)
-        keepBottomFrame(base, bytesPerRow: bytesPerRow, footer: footer ?? 0)
-    }
-
-    /// 没有滚动但内容变了：等待阶段直接换成新起点，开始后按原位置覆盖。
-    private func inPlace(_ base: UnsafeRawPointer, bytesPerRow: Int, features: Features) -> Outcome {
+    /// 到目前为止的长图，按从上到下的若干段行给出。
+    func withSegments<T>(_ body: ([(pixels: UnsafeRawPointer, rows: Int)]) -> T) -> T {
         if !started {
-            restart(base, bytesPerRow: bytesPerRow, features: features)
-            return .waiting
+            return previousPixels.withUnsafeBytes { frame in
+                guard previous != nil, let base = frame.baseAddress else { return body([]) }
+                return body([(base, height)])
+            }
         }
-        place(base, bytesPerRow: bytesPerRow, features: features, offset: anchorOffset)
-        return .unchanged
-    }
-
-    private func place(_ base: UnsafeRawPointer, bytesPerRow: Int, features: Features, offset: Int) {
-        let top = header ?? 0
-        let bottom = footer ?? 0
-        paint(base, bytesPerRow: bytesPerRow, rows: top..<(height - bottom), offset: offset, floor: top)
-        anchor = features
-        anchorOffset = offset
-        if offset >= maxOffset {
-            maxOffset = offset
-            keepBottomFrame(base, bytesPerRow: bytesPerRow, footer: bottom)
-        }
-    }
-
-    /// 把帧的 `rows` 画到长图 `offset` 处；长图里 `floor` 以上（顶部栏）和最大高度以下的行不画。
-    private func paint(_ base: UnsafeRawPointer, bytesPerRow: Int, rows: Range<Int>, offset: Int, floor: Int) {
-        for row in rows {
-            let target = row + offset
-            if target < floor { continue }
-            if target >= maxHeight { break }
-            canvas.row(target).copyMemory(from: base + row * bytesPerRow, byteCount: rowBytes)
-        }
-    }
-
-    private func keepBottomFrame(_ base: UnsafeRawPointer, bytesPerRow: Int, footer: Int) {
-        bottomFrameFooter = footer
-        bottomFrame.withUnsafeMutableBytes { target in
-            for row in 0..<height {
-                (target.baseAddress! + row * rowBytes).copyMemory(from: base + row * bytesPerRow, byteCount: rowBytes)
+        return output.withUnsafeBytes { canvas in
+            footer.withUnsafeBytes { bottomBar in
+                var segments: [(pixels: UnsafeRawPointer, rows: Int)] = []
+                let rows = min(canvasRows, deepestScroll + deepestBottom)
+                if rows > 0, let base = canvas.baseAddress { segments.append((base, rows)) }
+                if deepestBottom < height, let base = bottomBar.baseAddress {
+                    segments.append((base, height - deepestBottom))
+                }
+                return body(segments)
             }
         }
     }
 
-    /// 取长图的若干行：最后 bottomFrameFooter 行来自滚得最远的那一帧的底部，其余来自长图。
-    private func compose(_ range: Range<Int>) -> [UInt8] {
-        let total = projectedHeight
-        let footerStart = total - bottomFrameFooter
-        var pixels = [UInt8](repeating: 0, count: range.count * rowBytes)
-        pixels.withUnsafeMutableBytes { buffer in
-            bottomFrame.withUnsafeBytes { bottom in
-                for (index, row) in range.enumerated() {
-                    let target = buffer.baseAddress! + index * rowBytes
-                    if row >= footerStart {
-                        target.copyMemory(from: bottom.baseAddress! + (height - (total - row)) * rowBytes, byteCount: rowBytes)
+    // MARK: - 画布
+
+    /// 开始之前，最新的一帧就是起点。
+    private func follow(_ frame: Analysis, _ base: UnsafeRawPointer, bytesPerRow: Int) {
+        previous = frame
+        previousScroll = 0
+        let rowBytes = width * 4
+        if previousPixels.count != rowBytes * height {
+            previousPixels = [UInt8](repeating: 0, count: rowBytes * height)
+        }
+        previousPixels.withUnsafeMutableBytes { target in
+            for y in 0..<height {
+                target.baseAddress!.advanced(by: y * rowBytes).copyMemory(from: base + y * bytesPerRow, byteCount: rowBytes)
+            }
+        }
+    }
+
+    /// 上一帧成为长图的顶部。
+    private func begin(top: Int, bottom: Int) {
+        let rowBytes = width * 4
+        started = true
+        headerRows = top
+        output.reserveCapacity(rowBytes * min(maxHeight, height * 4))
+        output.append(contentsOf: previousPixels[0..<(bottom * rowBytes)])
+        canvasRows = bottom
+        deepestScroll = 0
+        deepestBottom = bottom
+        footer = Array(previousPixels[(bottom * rowBytes)...])
+        previousScroll = 0
+        previousPixels = []
+    }
+
+    /// 把这一帧显示的行画到画布上。滚动时固定栏下面最上方的六分之一不画：
+    /// 页面滚动后才吸顶的栏，否则会出现在长图中间。
+    private func paint(
+        _ base: UnsafeRawPointer, bytesPerRow: Int, scroll: Int, top: Int, bottom: Int, moved: Bool, still: [Bool]
+    ) {
+        let rowBytes = width * 4
+        let floor = max(top, headerRows)
+        var from = moved ? max(floor, headerRows + (height - headerRows) / 6) : floor
+        from = max(moved ? floor : headerRows, min(from, canvasRows - scroll))
+        from = max(from, headerRows - scroll)
+        if bottom > from {
+            let existing = canvasRows
+            let end = scroll + bottom
+            if end > canvasRows {
+                output.append(contentsOf: repeatElement(0, count: (end - canvasRows) * rowBytes))
+                canvasRows = end
+            }
+            // 长图里已有的行，保留右侧浮动滚动条时隐时现的那一条，以及其余部分在滚、自己不动的列
+            // （吸顶侧栏）：重画它们会把它们拖成一长条。
+            let segmentWidth = max(1, columns / Self.segments)
+            var spans: [(start: Int, count: Int)] = []
+            for segment in 0..<Self.segments where !(still.indices.contains(segment) && still[segment]) {
+                let start = segment * segmentWidth * 4
+                let end = (segment == Self.segments - 1 ? columns : (segment + 1) * segmentWidth) * 4
+                if let last = spans.last, last.start + last.count == start {
+                    spans[spans.count - 1].count += end - start
+                } else {
+                    spans.append((start, end - start))
+                }
+            }
+            // 新的行里这种列填成它的背景色，吸顶侧栏就像整页截图那样只在顶部出现一次。
+            var fills: [(start: Int, count: Int, pixel: UInt32)] = []
+            for segment in still.indices where still[segment] {
+                let start = segment * segmentWidth
+                let end = segment == Self.segments - 1 ? columns : (segment + 1) * segmentWidth
+                fills.append((start, end - start, commonPixel(base, bytesPerRow: bytesPerRow, columns: start..<end, rows: top..<bottom)))
+            }
+            output.withUnsafeMutableBytes { canvas in
+                for y in from..<bottom {
+                    let target = canvas.baseAddress!.advanced(by: (scroll + y) * rowBytes)
+                    let source = base + y * bytesPerRow
+                    if scroll + y >= existing {
+                        target.copyMemory(from: source, byteCount: rowBytes)
+                        for fill in fills {
+                            let pixels = (target + fill.start * 4).assumingMemoryBound(to: UInt32.self)
+                            for x in 0..<fill.count { pixels[x] = fill.pixel }
+                        }
                     } else {
-                        target.copyMemory(from: canvas.row(row), byteCount: rowBytes)
+                        for span in spans { (target + span.start).copyMemory(from: source + span.start, byteCount: span.count) }
                     }
                 }
             }
         }
-        return pixels
-    }
-
-    // MARK: - 找滚动量
-
-    /// 新帧相对参照帧滚动了几行（正数为向下滚，内容上移）。只比较 [top, bottom) 之间的行。
-    private func findShift(_ reference: Features, _ current: Features, top: Int, bottom: Int) -> Int? {
-        voteShift(reference, current, top: top, bottom: bottom)
-            ?? searchShift(reference, current, top: top, bottom: bottom)
-    }
-
-    private func voteShift(_ reference: Features, _ current: Features, top: Int, bottom: Int) -> Int? {
-        // 只用两帧里都只出现一次的列段当锚点
-        let anchors = uniqueSegments(reference, top: top, bottom: bottom)
-        let candidates = uniqueSegments(current, top: top, bottom: bottom)
-        var votes = [Int32](repeating: 0, count: 2 * height + 1)
-        var found = 0
-        for (key, row) in candidates where row >= 0 {
-            guard let match = anchors[key], match >= 0 else { continue }
-            votes[Int(match) - Int(row) + height] += 1
-            found += 1
-        }
-        guard let best = votes.indices.max(by: { votes[$0] < votes[$1] }) else { return nil }
-        let bestVotes = Int(votes[best])
-        guard bestVotes >= max(6, found / 5) else { return nil }
-        // 次多的票数（不算紧挨着的几个位移）要明显落后
-        var second = 0
-        for index in votes.indices where abs(index - best) > 2 { second = max(second, Int(votes[index])) }
-        guard bestVotes >= second * 2 else { return nil }
-        return best - height
-    }
-
-    /// [top, bottom) 之间每个非纯色列段的哈希 → 所在行；出现不止一次的记为 -1。
-    /// 连续几行一模一样（文字的竖笔画、色块的左右边）时只记第一行：这几行彼此分不清，
-    /// 都记下来会互相变成“重复”，或者把票分到相邻的几个位移上。
-    private func uniqueSegments(_ features: Features, top: Int, bottom: Int) -> [UInt64: Int32] {
-        var rows = [UInt64: Int32](minimumCapacity: (bottom - top) * segments)
-        for row in top..<bottom {
-            for segment in 0..<segments {
-                let index = row * segments + segment
-                if features.flat[index] { continue }
-                let key = features.segmentHash[index]
-                if row > top && features.segmentHash[index - segments] == key { continue }
-                rows[key] = rows[key] == nil ? Int32(row) : -1
+        if scroll >= deepestScroll {
+            deepestScroll = scroll
+            deepestBottom = bottom
+            footer.removeAll(keepingCapacity: true)
+            for y in bottom..<height {
+                footer.append(contentsOf: UnsafeRawBufferPointer(start: base + y * bytesPerRow, count: rowBytes))
             }
         }
-        return rows
     }
 
-    /// 投票失败时的兜底：每段亮度和在容差内的行占多数的位移。
-    private func searchShift(_ reference: Features, _ current: Features, top: Int, bottom: Int) -> Int? {
-        let span = bottom - top
-        let minimumOverlap = max(24, span / 4)
-        guard span > minimumOverlap else { return nil }
-        // 每个像素三个通道平均差不超过 8
-        let tolerance = (0..<segments).map { (segmentStarts[$0 + 1] - segmentStarts[$0]) * 3 * 8 }
-        let limit = span - minimumOverlap
-        // 每个位移：容差内的行占比，以及平均差值（占比差不多时取差值最小的，免得差一两行）
-        var scores = [Double](repeating: 0, count: 2 * limit + 1)
-        var costs = [Double](repeating: .infinity, count: 2 * limit + 1)
-        for shift in -limit...limit {
-            var samples = 0
-            var matched = 0
-            var cost = 0
-            var row = max(top, top - shift)
-            let end = min(bottom, bottom - shift)
-            while row < end {
-                let other = row + shift
-                if !(current.rowFlat[row] && reference.rowFlat[other]) {
-                    samples += 1
-                    var close = true
-                    for segment in 0..<segments {
-                        let difference = abs(
-                            Int(current.bandSum[row * segments + segment]) - Int(reference.bandSum[other * segments + segment]))
-                        cost += difference
-                        if difference > tolerance[segment] { close = false }
+    // MARK: - 匹配
+
+    private func analyze(_ base: UnsafeRawPointer, bytesPerRow: Int) -> Analysis {
+        let columns = self.columns
+        let segments = Self.segments
+        let segmentWidth = max(1, columns / segments)
+        var luma = [UInt8](repeating: 0, count: columns * height)
+        var hashes = [UInt64](repeating: 0, count: height)
+        var detailed = [Bool](repeating: false, count: height)
+        var segmentDetailed = [Bool](repeating: false, count: height * segments)
+        var segmentHashes = [UInt64](repeating: 0, count: height * segments)
+        var profile = [Int32](repeating: 0, count: height * Self.profileBands)
+        luma.withUnsafeMutableBufferPointer { lumaRows in
+            for y in 0..<height {
+                let source = base.advanced(by: y * bytesPerRow).assumingMemoryBound(to: UInt8.self)
+                let target = lumaRows.baseAddress! + y * columns
+                var rowHash: UInt64 = 0xcbf2_9ce4_8422_2325
+                var rowLow: UInt8 = 255
+                var rowHigh: UInt8 = 0
+                for segment in 0..<segments {
+                    let start = min(columns, segment * segmentWidth)
+                    let end = segment == segments - 1 ? columns : min(columns, start + segmentWidth)
+                    var sum: Int32 = 0
+                    var hash: UInt64 = 0xcbf2_9ce4_8422_2325 &+ UInt64(segment)
+                    var low: UInt8 = 255
+                    var high: UInt8 = 0
+                    var x = start
+                    while x < end {
+                        let pixel = source + x * 4
+                        let value = UInt8(
+                            (UInt32(pixel[2]) * 77 + UInt32(pixel[1]) * 150 + UInt32(pixel[0]) * 29) >> 8)
+                        target[x] = value
+                        hash = (hash ^ UInt64(value)) &* 0x0000_0100_0000_01b3
+                        if value < low { low = value }
+                        if value > high { high = value }
+                        sum += Int32(value)
+                        x += 1
                     }
-                    if close { matched += 1 }
+                    segmentDetailed[y * segments + segment] = end > start && Int16(high) - Int16(low) > Self.tolerance
+                    segmentHashes[y * segments + segment] = hash
+                    rowHash = (rowHash ^ hash) &* 0x0000_0100_0000_01b3
+                    profile[y * Self.profileBands + segment * Self.profileBands / segments] += sum
+                    if low < rowLow { rowLow = low }
+                    if high > rowHigh { rowHigh = high }
                 }
-                row += 3
-            }
-            if samples >= 8 {
-                scores[shift + limit] = Double(matched) / Double(samples)
-                costs[shift + limit] = Double(cost) / Double(samples)
+                hashes[y] = rowHash
+                detailed[y] = Int16(rowHigh) - Int16(rowLow) > Self.tolerance
             }
         }
-        guard let peak = scores.indices.max(by: { scores[$0] < scores[$1] }), scores[peak] >= 0.8 else { return nil }
-        var second = 0.0
-        for index in scores.indices where abs(index - peak) > 3 { second = max(second, scores[index]) }
-        guard second <= scores[peak] - 0.2 else { return nil }
-        let nearby = max(0, peak - 3)...min(scores.count - 1, peak + 3)
-        let best = nearby.filter { scores[$0] >= scores[peak] - 0.05 }.min { costs[$0] < costs[$1] } ?? peak
-        return best - limit
+        return Analysis(
+            luma: luma, hashes: hashes, detailed: detailed, segmentDetailed: segmentDetailed,
+            segmentHashes: segmentHashes, profile: profile)
     }
-}
 
-/// 一帧的特征：每行的哈希，以及每行每个列段的哈希、是否纯色、亮度和。
-private struct Features {
-    var rowHash: [UInt64]
-    var rowFlat: [Bool]
-    var segmentHash: [UInt64]
-    var flat: [Bool]
-    var bandSum: [Int32]
-
-    init(_ base: UnsafeRawPointer, bytesPerRow: Int, height: Int, segmentStarts: [Int]) {
-        let segments = segmentStarts.count - 1
-        rowHash = [UInt64](repeating: 0, count: height)
-        rowFlat = [Bool](repeating: true, count: height)
-        segmentHash = [UInt64](repeating: 0, count: height * segments)
-        flat = [Bool](repeating: true, count: height * segments)
-        bandSum = [Int32](repeating: 0, count: height * segments)
-        let basis: UInt64 = 0xcbf2_9ce4_8422_2325
-        let prime: UInt64 = 0x0000_0100_0000_01b3
-        for row in 0..<height {
-            let line = base + row * bytesPerRow
-            var whole = basis
-            var rowIsFlat = true
-            let rowFirst = line.loadUnaligned(as: UInt32.self) & 0x00ff_ffff
-            for segment in 0..<segments {
-                // 段号混进初值，不同列段的相同内容哈希不同
-                var hash = basis ^ (UInt64(segment + 1) &* 0x9e37_79b9_7f4a_7c15)
-                var sum: UInt32 = 0
-                var same = true
-                let first = line.loadUnaligned(fromByteOffset: segmentStarts[segment] * 4, as: UInt32.self) & 0x00ff_ffff
-                for column in segmentStarts[segment]..<segmentStarts[segment + 1] {
-                    // 小端 BGRA：低字节是 B，最高字节是 A（不参与比较）
-                    let pixel = line.loadUnaligned(fromByteOffset: column * 4, as: UInt32.self) & 0x00ff_ffff
-                    hash = (hash ^ UInt64(pixel)) &* prime
-                    sum &+= (pixel & 0xff) &+ ((pixel >> 8) & 0xff) &+ (pixel >> 16)
-                    same = same && pixel == first
+    /// 两行里的某个列段看起来是否一样：像素几乎相同（容许抗锯齿和光标边缘），
+    /// 或者形状相同只是深浅不同，比如页面滚动时文字逐渐显现。
+    private func segmentMatches(
+        _ a: Analysis, _ rowA: Int, _ b: Analysis, _ rowB: Int, _ segment: Int, sameShadeOnly: Bool = false
+    ) -> Bool {
+        let columns = self.columns
+        let segmentWidth = max(1, columns / Self.segments)
+        let start = min(columns, segment * segmentWidth)
+        let end = segment == Self.segments - 1 ? columns : min(columns, start + segmentWidth)
+        let allowed = (end - start) / 25 + 1
+        return a.luma.withUnsafeBufferPointer { lumaA in
+            b.luma.withUnsafeBufferPointer { lumaB in
+                let first = lumaA.baseAddress! + rowA * columns
+                let second = lumaB.baseAddress! + rowB * columns
+                var differing = 0
+                var x = start
+                while x < end {
+                    let difference = Int16(first[x]) - Int16(second[x])
+                    if difference > Self.tolerance || difference < -Self.tolerance {
+                        differing += 1
+                        if differing > allowed { break }
+                    }
+                    x += 1
                 }
-                let index = row * segments + segment
-                segmentHash[index] = hash
-                flat[index] = same
-                bandSum[index] = Int32(truncatingIfNeeded: sum)
-                rowIsFlat = rowIsFlat && same && first == rowFirst
-                whole = (whole ^ hash) &* prime
+                if differing <= allowed { return true }
+                if sameShadeOnly { return false }
+                // 归一化相关不受亮度、对比度变化的影响。
+                var sumA: Int64 = 0, sumB: Int64 = 0, squaresA: Int64 = 0, squaresB: Int64 = 0, products: Int64 = 0
+                for x in start..<end {
+                    let p = Int64(first[x])
+                    let q = Int64(second[x])
+                    sumA += p
+                    sumB += q
+                    squaresA += p * p
+                    squaresB += q * q
+                    products += p * q
+                }
+                let n = Int64(end - start)
+                let varianceA = Double(n * squaresA - sumA * sumA)
+                let varianceB = Double(n * squaresB - sumB * sumB)
+                let covariance = Double(n * products - sumA * sumB)
+                // 两边都要有真正的结构：至少横跨这个列段有一条淡淡的边。
+                let floor = Double(n * n) * 40
+                guard varianceA > floor, varianceB > floor, covariance > 0 else { return false }
+                return covariance * covariance >= 0.85 * varianceA * varianceB
             }
-            rowHash[row] = whole
-            rowFlat[row] = rowIsFlat
         }
     }
-}
 
-/// 按块分配的行存储，长图变高时不用整体搬家。
-private final class RowStore {
-    private static let chunkRows = 256
-    private let rowBytes: Int
-    private var chunks: [UnsafeMutableRawPointer] = []
-
-    init(rowBytes: Int) {
-        self.rowBytes = rowBytes
-    }
-
-    deinit {
-        removeAll()
-    }
-
-    func removeAll() {
-        for chunk in chunks { chunk.deallocate() }
-        chunks.removeAll()
-    }
-
-    /// 第 `index` 行的起始地址；还没分配到的块会分配并清零。
-    func row(_ index: Int) -> UnsafeMutableRawPointer {
-        let chunk = index / Self.chunkRows
-        while chunks.count <= chunk {
-            let size = Self.chunkRows * rowBytes
-            let memory = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 16)
-            memory.initializeMemory(as: UInt8.self, repeating: 0, count: size)
-            chunks.append(memory)
+    /// 某一行在两帧之间是否没动：完全相同，或者至多一个列段不同（时钟、悬停高亮）。
+    private func rowStays(_ a: Analysis, _ b: Analysis, _ row: Int) -> Bool {
+        if a.hashes[row] == b.hashes[row] { return true }
+        var differing = 0
+        for segment in 0..<Self.segments where !segmentMatches(a, row, b, row, segment, sameShadeOnly: true) {
+            differing += 1
+            if differing > 1 { return false }
         }
-        return chunks[chunk] + (index % Self.chunkRows) * rowBytes
+        return true
+    }
+
+    /// `current` 相对 `previous` 滚了多少行（正数为向下滚；0 表示原地变化），什么都对不上时返回 nil。
+    private func findShift(_ previous: Analysis, _ current: Analysis, top: Int, bottom: Int) -> Int? {
+        let band = bottom - top
+        // 只剩十分之一的重叠也足够匹配了。
+        let maxShift = max(0, band - max(24, band / 10))
+        let votes = segmentVotes(previous, current, top: top, bottom: bottom, maxShift: maxShift)
+        let stillVotes = Int(votes[maxShift])
+        var ranked: [(shift: Int, votes: Int)] = []
+        for (index, count) in votes.enumerated() where count >= 2 && index != maxShift {
+            ranked.append((index - maxShift, Int(count)))
+        }
+        ranked.sort { $0.votes > $1.votes }
+
+        // 压倒性的精确证据直接定案，即使中间很多地方在变（图片加载、悬停从一张卡片移到另一张）。
+        if let leader = ranked.first {
+            let runnerUp = ranked.dropFirst().first { abs($0.shift - leader.shift) > 2 }?.votes ?? 0
+            // 不动的列（吸顶侧栏）在其余部分滚动时会投“没动”的票，所以只要压过“没动”的一半。
+            if leader.votes >= Self.convincingVotes && leader.votes >= 2 * runnerUp && 2 * leader.votes >= stillVotes,
+               let score = score(previous, current, shift: leader.shift, from: top, to: bottom, need: 0.15)
+            {
+                trace?("  votes settle \(leader.shift) (\(leader.votes) vs still \(stillVotes), next \(runnerUp)) score \(String(format: "%.2f", score))")
+                return leader.shift
+            }
+        }
+        if stillVotes >= Self.convincingVotes && stillVotes >= 2 * (ranked.first?.votes ?? 0) {
+            trace?("  votes settle still (\(stillVotes) vs \(ranked.first?.votes ?? 0))")
+            return 0
+        }
+
+        var candidates = Array(ranked.prefix(3))
+        if maxShift >= 1 {
+            candidates += profileShifts(previous, current, top: top, bottom: bottom, maxShift: maxShift).map { ($0, 0) }
+            if lastShift != 0 && abs(lastShift) <= maxShift { candidates.append((lastShift, 0)) }
+        }
+        var moving: (shift: Int, score: Double, votes: Int)?
+        var tried = Set<Int>()
+        for candidate in candidates where tried.insert(candidate.shift).inserted {
+            let votes = Int(votes[candidate.shift + maxShift])
+            let score = self.score(previous, current, shift: candidate.shift, from: top, to: bottom, need: Self.minimumScore)
+            trace?("  candidate \(candidate.shift) votes \(votes) score \(score.map { String(format: "%.2f", $0) } ?? "-")")
+            guard let score, score >= Self.minimumScore else { continue }
+            if let leader = moving {
+                // 得分明显更高的胜出；否则看证据多少，再看和用户原来的滚动速度是否接近。
+                if score < leader.score - 0.02 { continue }
+                if score <= leader.score + 0.02 {
+                    if votes < leader.votes { continue }
+                    if votes == leader.votes && abs(candidate.shift - lastShift) >= abs(leader.shift - lastShift) {
+                        continue
+                    }
+                }
+            }
+            moving = (candidate.shift, score, votes)
+        }
+
+        // 原地变化（视频在播放、图片在加载）：中间大部分仍对得上原来的位置，或者整帧大部分没动。
+        let bandStill = score(previous, current, shift: 0, from: top, to: bottom) ?? 0
+        let frameStill = bandStill >= Self.minimumScore
+            ? bandStill : (score(previous, current, shift: 0, from: 0, to: height, need: 0.7) ?? 0)
+        let still = bandStill >= Self.minimumScore || frameStill >= 0.7
+        trace?("  still band \(String(format: "%.2f", bandStill)) frame \(String(format: "%.2f", frameStill)) votes \(stillVotes)")
+
+        if let moving, !still || moving.votes > stillVotes || moving.score > bandStill + 0.05 { return moving.shift }
+        if still { return 0 }
+
+        // 滚动的同时中间很大一块变了（图片滚进视野时才加载）：没有哪个位移对得很好，
+        // 但可能有一个比其他的好得多。
+        var scored: [(shift: Int, score: Double)] = []
+        for shift in tried {
+            if let value = score(previous, current, shift: shift, from: top, to: bottom) { scored.append((shift, value)) }
+        }
+        scored.sort { $0.score > $1.score }
+        let leading = scored.first.map { "\($0.shift)@\(String(format: "%.2f", $0.score))" } ?? "none"
+        let leadingVotes = scored.first.map { Int(votes[$0.shift + maxShift]) } ?? 0
+        attempt = "max \(maxShift) best \(leading)/\(leadingVotes)v next \(scored.dropFirst().first.map { String(format: "%.2f", $0.score) } ?? "-") still \(String(format: "%.2f", bandStill))"
+        guard let best = scored.first, best.score >= 0.3, best.score >= bandStill + 0.15 else { return nil }
+        let second = scored.dropFirst().first { abs($0.shift - best.shift) > 2 }?.score ?? 0
+        trace?("  relative \(best.shift) score \(String(format: "%.2f", best.score)) next \(String(format: "%.2f", second))")
+        // 连续丢了几帧之后，上一帧多半已经过期（页面彻底变了），领先得少一点也可以找回来。
+        let lead = lostStreak >= 3 ? 1.3 : 2
+        return best.score >= 0.35 || lostStreak >= 3 ? (best.score >= lead * second ? best.shift : nil) : nil
+    }
+
+    /// 帧里某一块最常见的像素，稀疏采样。
+    private func commonPixel(_ base: UnsafeRawPointer, bytesPerRow: Int, columns: Range<Int>, rows: Range<Int>) -> UInt32 {
+        var counts: [UInt32: Int] = [:]
+        var y = rows.lowerBound
+        while y < rows.upperBound {
+            let row = (base + y * bytesPerRow).assumingMemoryBound(to: UInt32.self)
+            var x = columns.lowerBound
+            while x < columns.upperBound {
+                counts[row[x], default: 0] += 1
+                x += 4
+            }
+            y += 4
+        }
+        return counts.max { $0.value < $1.value }?.key ?? 0xFFFF_FFFF
+    }
+
+    /// 中间部分滚了 `shift` 行时，完全留在原地的列段，比如吸顶侧栏。
+    private func stillSegments(_ previous: Analysis, _ current: Analysis, shift: Int, top: Int, bottom: Int) -> [Bool] {
+        let segments = Self.segments
+        var stayed = [Int](repeating: 0, count: segments)
+        var moved = [Int](repeating: 0, count: segments)
+        var y = top
+        while y < bottom {
+            let row = y + shift
+            for segment in 0..<segments where current.segmentDetailed[y * segments + segment] {
+                let hash = current.segmentHashes[y * segments + segment]
+                if previous.segmentHashes[y * segments + segment] == hash { stayed[segment] += 1 }
+                if row >= top && row < bottom && previous.segmentHashes[row * segments + segment] == hash { moved[segment] += 1 }
+            }
+            y += 2
+        }
+        var still = (0..<segments).map { stayed[$0] >= 6 && stayed[$0] > 2 * moved[$0] }
+        // 夹在两个不动列段之间的纯色段属于同一列。
+        for segment in 1..<(segments - 1) where still[segment - 1] && still[segment + 1] { still[segment] = true }
+        // 所有列都不动，说明是页面没滚。
+        return still.allSatisfy { $0 } ? [Bool](repeating: false, count: segments) : still
+    }
+
+    /// 精确匹配的列段给它们之间的位移投票，包括 0。只有带细节、在中间部分里至多出现几次的列段参与。
+    private func segmentVotes(_ previous: Analysis, _ current: Analysis, top: Int, bottom: Int, maxShift: Int) -> [Int32] {
+        let segments = Self.segments
+        var rowsByHash: [UInt64: [Int32]] = [:]
+        rowsByHash.reserveCapacity((bottom - top) * 4)
+        for y in top..<bottom {
+            for segment in 0..<segments where previous.segmentDetailed[y * segments + segment] && !stillColumns[segment] {
+                rowsByHash[previous.segmentHashes[y * segments + segment], default: []].append(Int32(y))
+            }
+        }
+        var votes = [Int32](repeating: 0, count: 2 * maxShift + 1)
+        for y in top..<bottom {
+            for segment in 0..<segments where current.segmentDetailed[y * segments + segment] && !stillColumns[segment] {
+                guard let rows = rowsByHash[current.segmentHashes[y * segments + segment]], rows.count <= 3 else {
+                    continue
+                }
+                for row in rows {
+                    let shift = Int(row) - y
+                    if abs(shift) <= maxShift { votes[shift + maxShift] += 1 }
+                }
+            }
+        }
+        return votes
+    }
+
+    /// 给从不出现完全相同的行的内容（缩放过或重新渲染的文字）用：粗略的行轮廓最吻合的几个位移。
+    private func profileShifts(
+        _ previous: Analysis, _ current: Analysis, top: Int, bottom: Int, maxShift: Int
+    ) -> [Int] {
+        let bands = Self.profileBands
+        var costs = [Double](repeating: .infinity, count: 2 * maxShift + 1)
+        previous.profile.withUnsafeBufferPointer { first in
+            current.profile.withUnsafeBufferPointer { second in
+                for shift in -maxShift...maxShift where shift != 0 {
+                    let from = max(top, top - shift)
+                    let to = min(bottom, bottom - shift)
+                    var total: Int64 = 0
+                    var rows = 0
+                    var y = from
+                    while y < to {
+                        let a = (y + shift) * bands
+                        let b = y * bands
+                        for band in 0..<bands { total += Int64(abs(first[a + band] - second[b + band])) }
+                        rows += 1
+                        y += 2
+                    }
+                    if rows > 0 { costs[shift + maxShift] = Double(total) / Double(rows) }
+                }
+            }
+        }
+        var minima: [(shift: Int, cost: Double)] = []
+        for index in costs.indices where costs[index].isFinite {
+            let left = index > 0 ? costs[index - 1] : .infinity
+            let right = index + 1 < costs.count ? costs[index + 1] : .infinity
+            if costs[index] <= left && costs[index] <= right { minima.append((index - maxShift, costs[index])) }
+        }
+        minima.sort { $0.cost < $1.cost }
+        return minima.prefix(3).map(\.shift)
+    }
+
+    /// `from..<to` 行里（隔行取样）有细节的列段在位移 `shift` 下对得上的比例；
+    /// 有细节的太少、判断不了时返回 nil。比例已经不可能达到 `need` 时提前放弃，返回 nil。
+    private func score(
+        _ previous: Analysis, _ current: Analysis, shift: Int, from: Int, to: Int, need: Double = 0
+    ) -> Double? {
+        let low = max(from, from - shift)
+        let high = min(to, to - shift)
+        guard high > low else { return nil }
+        let segments = Self.segments
+        var total = 0
+        var y = low
+        while y < high {
+            let row = y + shift
+            for segment in 0..<segments
+            where !stillColumns[segment]
+                && (current.segmentDetailed[y * segments + segment] || previous.segmentDetailed[row * segments + segment])
+            {
+                total += 1
+            }
+            y += 2
+        }
+        guard total >= 24 else { return nil }
+        let allowedMisses = need > 0 ? Int(Double(total) * (1 - need)) : total
+        var misses = 0
+        y = low
+        while y < high {
+            let row = y + shift
+            if previous.hashes[row] != current.hashes[y] {
+                for segment in 0..<segments
+                where !stillColumns[segment]
+                    && (current.segmentDetailed[y * segments + segment] || previous.segmentDetailed[row * segments + segment])
+                {
+                    if !segmentMatches(previous, row, current, y, segment) {
+                        misses += 1
+                        if misses > allowedMisses { return nil }
+                    }
+                }
+            }
+            y += 2
+        }
+        return Double(total - misses) / Double(total)
     }
 }

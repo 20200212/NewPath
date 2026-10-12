@@ -1,0 +1,812 @@
+{
+  "/Users/multimedia/githubxm/NewPath/tsconfig.node.json": {
+    "mtime": 1791768646.4571445,
+    "ast_hash": "573a37befb798b0b4560fe71c06c7576",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/package.json": {
+    "mtime": 1791771078.9987786,
+    "ast_hash": "b5b340040fc223cd14dbd75a91d0d13c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/vite.ui.config.ts": {
+    "mtime": 1791768646.4574203,
+    "ast_hash": "21e818f3ed7349f9114c2a650bbf66ed",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/tsconfig.json": {
+    "mtime": 1791768646.4570541,
+    "ast_hash": "09b44b2281016d239d9d1a6786074f27",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/vite.config.ts": {
+    "mtime": 1791768646.4572356,
+    "ast_hash": "41b002aef79e0f43b7a4108d829e48c5",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/vitest.config.ts": {
+    "mtime": 1791768646.4575157,
+    "ast_hash": "18fb5ae254fb0ea53e2638c93d54d729",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/vite.renderer.config.ts": {
+    "mtime": 1791768646.457328,
+    "ast_hash": "4d9c251b4896d70980ad348867b07d2d",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-ocr/main.swift": {
+    "mtime": 1791768646.4456253,
+    "ast_hash": "0d66a72c7c7a5599204c91a4310ca8b3",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-window-list/WindowList.swift": {
+    "mtime": 1791770102.3380213,
+    "ast_hash": "2c48172f342afa5c1f6314684a9df5fd",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-window-list/main.swift": {
+    "mtime": 1791770105.0280094,
+    "ast_hash": "d515810170b3b9563d57bbc55234ca5c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/ScreenCapture.swift": {
+    "mtime": 1791770498.105439,
+    "ast_hash": "ae6feb49672a4310320d41a9c9eaeeac",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/Support.swift": {
+    "mtime": 1791770470.5029376,
+    "ast_hash": "3be53c3a85bb43d4cde0a5f8473c36d0",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/ScrollCapture.swift": {
+    "mtime": 1791770551.0572517,
+    "ast_hash": "37a702b524d194d377fb6c1291506b27",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/main.swift": {
+    "mtime": 1791770585.7955604,
+    "ast_hash": "f1fd18d355deef8fd92ad1cbd20cebf7",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/ScrollStitcher.swift": {
+    "mtime": 1791770430.0012012,
+    "ast_hash": "2a784bc2a1ed17090b62287a753347fb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/native/newpath-capture-agent/tests/main.swift": {
+    "mtime": 1791770404.455408,
+    "ast_hash": "6ab0fd7562292fad1245b013278b87c3",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-signing-policy.mjs": {
+    "mtime": 1791769943.6788583,
+    "ast_hash": "9e857324e44a644106008c816617a138",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-sign.mjs": {
+    "mtime": 1791768646.447831,
+    "ast_hash": "5ee327d8d8fa6c5b99173e0c7785193d",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/install-mac-local.mjs": {
+    "mtime": 1791770149.9630992,
+    "ast_hash": "04246af0250a4f1c9f6f39ae584a1659",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/test-scroll-stitcher.mjs": {
+    "mtime": 1791770269.6838722,
+    "ast_hash": "edcfbad3fb7157d70c75051f90e59f6a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-signing-policy.test.mjs": {
+    "mtime": 1791770081.2303813,
+    "ast_hash": "6baa7868fae377472304569417f0ce46",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/sign-mac-local.mjs": {
+    "mtime": 1791770149.963407,
+    "ast_hash": "c89cf6fc9dbff1a94869af7d68edca1f",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/generate-icon.mjs": {
+    "mtime": 1791768646.4477203,
+    "ast_hash": "0cb73aa273232b5c1118a6723adc4789",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/build-native.mjs": {
+    "mtime": 1791770617.2554886,
+    "ast_hash": "861004eddb4b777075a55d6a3058d87a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-sign.test.mjs": {
+    "mtime": 1791768646.4479396,
+    "ast_hash": "2a8da2affe6c60892edefc20afe865aa",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/sign-mac-local.test.mjs": {
+    "mtime": 1791770101.6251185,
+    "ast_hash": "d72cde80177db604b191817eeb395078",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-app.mjs": {
+    "mtime": 1791769920.0740004,
+    "ast_hash": "c87ffda866b270b4cfbc8770f2a1d0b2",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/install-mac-local.test.mjs": {
+    "mtime": 1791770112.0457563,
+    "ast_hash": "5567e8f61af6e7cd328404409bdc82fc",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-app-registration.mjs": {
+    "mtime": 1791769986.0707345,
+    "ast_hash": "d34a68a0c34c2e0d741b485d710866b9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/check-mac-signature.mjs": {
+    "mtime": 1791769986.0729947,
+    "ast_hash": "273478e78384d108b8c145518f02faba",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/list-mac-app-registrations.swift": {
+    "mtime": 1791769996.5532026,
+    "ast_hash": "14943c39e44c7d6f025e27b29b0754af",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/scripts/mac-app-registration.test.mjs": {
+    "mtime": 1791770090.0057104,
+    "ast_hash": "dd4c7b2ed58387f67ac7044fcf834236",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/devOptions.ts": {
+    "mtime": 1791769954.0429318,
+    "ast_hash": "cebb9bf4eeff4afae017ecd0700367c9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/cropRect.test.ts": {
+    "mtime": 1791768646.440446,
+    "ast_hash": "b6ac9c3fb968e2bb8b4715eb5e2785a6",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/devOptions.test.ts": {
+    "mtime": 1791769964.7054734,
+    "ast_hash": "50734251fe5861b203c6872f60f70f3e",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/scrollSession.ts": {
+    "mtime": 1791770353.3301122,
+    "ast_hash": "8576ec717983977c2bd734f5583079c9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/macOcr.ts": {
+    "mtime": 1791768646.4418793,
+    "ast_hash": "714a4417cdae1c9018770e1c67a332b0",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/captureAgent.test.ts": {
+    "mtime": 1791769876.8619335,
+    "ast_hash": "f8615fdc09aaa7de9700c24c35c1a405",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/macWindowList.ts": {
+    "mtime": 1791770136.2608232,
+    "ast_hash": "6761947a0d37a302212e3e4f3a4a0a70",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/main.ts": {
+    "mtime": 1791770731.936372,
+    "ast_hash": "714414444d78ac0633d90a7ab1117522",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/onboardingRules.test.ts": {
+    "mtime": 1791770309.3338013,
+    "ast_hash": "020dc160a2d27f91c66504a9dd955b27",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/pinGeometry.test.ts": {
+    "mtime": 1791768646.4432302,
+    "ast_hash": "dd0f066ac523c032d201fddddaef57bb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/i18n.ts": {
+    "mtime": 1791770486.8488061,
+    "ast_hash": "21b0643b2bf0948002b174c4af1c0b67",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/captureAgent.ts": {
+    "mtime": 1791769864.8101401,
+    "ast_hash": "f7ef4b27e60c5e2498a28c68762dea8c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/electron-env.d.ts": {
+    "mtime": 1791768646.4407356,
+    "ast_hash": "7b12921d45d6d7b35f049504cfbcd762",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/locale.ts": {
+    "mtime": 1791768646.4417605,
+    "ast_hash": "1e04353dff46600287043341e9a4d7b8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/settings.ts": {
+    "mtime": 1791770148.0995412,
+    "ast_hash": "323c696c241f6ba3c1d65238965aa025",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/ocrResult.ts": {
+    "mtime": 1791768646.4430861,
+    "ast_hash": "277c79e3ab8428f3fc5c8c03a4a20aca",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowList.ts": {
+    "mtime": 1791768646.44486,
+    "ast_hash": "1196b9fda584ef15c21e6dd7fd57d4f7",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/capture.ts": {
+    "mtime": 1791770077.1502252,
+    "ast_hash": "1631e05889503be857a6c9066c45bd53",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/cropRect.ts": {
+    "mtime": 1791768646.440594,
+    "ast_hash": "de8345e477719e987d86db2fa2014b6b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/ocrResult.test.ts": {
+    "mtime": 1791768646.4429379,
+    "ast_hash": "974990577236bb7b7e2289888ec03e4a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/ipcTypes.ts": {
+    "mtime": 1791769758.7322729,
+    "ast_hash": "b4159909419c20f9b14a8ff3e4870605",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowCapture.test.ts": {
+    "mtime": 1791770024.3848717,
+    "ast_hash": "0e02b53e28bf9433bc9aaccc796b3e87",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/settings.test.ts": {
+    "mtime": 1791770155.2935984,
+    "ast_hash": "dd84509230f4b55336bc20fd91b401b6",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/ocr.ts": {
+    "mtime": 1791768646.4427376,
+    "ast_hash": "246b9f22a299d2bf73c3f36c5b02745e",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/sensitiveText.ts": {
+    "mtime": 1791768646.444485,
+    "ast_hash": "721d030e612e37c4204ac553341dbd4a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/pins.ts": {
+    "mtime": 1791770631.7466156,
+    "ast_hash": "b0e0bbfb81b837099ec196a8cb4a5973",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/locale.test.ts": {
+    "mtime": 1791768646.4416358,
+    "ast_hash": "2950ebd541e1a6e6365de6cb736a092c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowRects.test.ts": {
+    "mtime": 1791770136.256064,
+    "ast_hash": "09f475959b60f68771fd9eb951405e46",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/library.test.ts": {
+    "mtime": 1791768646.4412806,
+    "ast_hash": "e5d2c42efbbdd66d9e980c5ab636254c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/onboarding.ts": {
+    "mtime": 1791770631.7470548,
+    "ast_hash": "f520e20de7640534ec6e91d2d1154a3b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/diagnostics.ts": {
+    "mtime": 1791769976.0830367,
+    "ast_hash": "18ca6b9b7f76bf5a8c10adc83f1b36cc",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/preload.ts": {
+    "mtime": 1791769776.7260382,
+    "ast_hash": "78e25627bd21420ee091af465a57c35f",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/launchArgs.test.ts": {
+    "mtime": 1791770309.331,
+    "ast_hash": "d28759c83440117dc72d110e3a2df099",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/onboardingRules.ts": {
+    "mtime": 1791770290.0331175,
+    "ast_hash": "4fe81d171b09aa742c73fc8ff059c9b8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/powershell.ts": {
+    "mtime": 1791768646.443792,
+    "ast_hash": "368ffd33ff069e6816122ff4ae03fda8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/launchArgs.ts": {
+    "mtime": 1791770309.328211,
+    "ast_hash": "e5e0c280f235197f4bb8c3e84b16fad6",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowRects.ts": {
+    "mtime": 1791770090.3316917,
+    "ast_hash": "05397c17fd52447765f4df24a8f710f8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/nativeHelpers.ts": {
+    "mtime": 1791770136.2778382,
+    "ast_hash": "926127439fed17ff48cfd72818a83be7",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/library.ts": {
+    "mtime": 1791768646.44152,
+    "ast_hash": "27a4026f08d020178766c2562fd40fdb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/sensitiveText.test.ts": {
+    "mtime": 1791768646.444317,
+    "ast_hash": "2e06ff2b3e53df3a0fd103438b3efb59",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/pinGeometry.ts": {
+    "mtime": 1791768646.4434779,
+    "ast_hash": "23b711eecb044a2775f7290185738b7b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/screenshotFiles.ts": {
+    "mtime": 1791768646.444196,
+    "ast_hash": "b4d35173b216c824cd4b52dbe5fe3c70",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/scrollCapture.test.ts": {
+    "mtime": 1791769920.4995687,
+    "ast_hash": "a78ba74416a4448b325657942f0e5b8a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/scrollCapture.ts": {
+    "mtime": 1791769908.9463124,
+    "ast_hash": "d0cb0ef851251544d4431b6119b1b90a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/screenshotFiles.test.ts": {
+    "mtime": 1791768646.4440818,
+    "ast_hash": "1452af90bcdb6a460b36860780bec483",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowsOcr.ts": {
+    "mtime": 1791768646.4452438,
+    "ast_hash": "ec483591a55aaa4ccf8660ca3270a1cc",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/windowCapture.ts": {
+    "mtime": 1791770016.1274312,
+    "ast_hash": "bbf65b4d92a44d0242263ef2380cbcc5",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/electron/diagnostics.test.ts": {
+    "mtime": 1791769982.9740002,
+    "ast_hash": "e6842ff92b639d9792e408431cb1a9fe",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/App.tsx": {
+    "mtime": 1791770204.2938042,
+    "ast_hash": "5c9b23d5c08a296d93488cdcf8547b19",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/main.tsx": {
+    "mtime": 1791768646.456753,
+    "ast_hash": "fe12267bce06efa3fba73344ea9bd466",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/vite-env.d.ts": {
+    "mtime": 1791768646.4568548,
+    "ast_hash": "3da62b6e9f12c9710cfbc74150359131",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/WindowControls.tsx": {
+    "mtime": 1791770148.1146338,
+    "ast_hash": "01ba0d09b5d78796aa146218b5d87829",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/Switch.tsx": {
+    "mtime": 1791768646.4512608,
+    "ast_hash": "401f05df0309535141c0db84475aebea",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/ToolButton.tsx": {
+    "mtime": 1791768646.4514706,
+    "ast_hash": "6160ebac544878242f03e625dd4ad1cf",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/Button.tsx": {
+    "mtime": 1791768646.450913,
+    "ast_hash": "febf02ddb4100e0cb72d22cfe044d875",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/Modal.tsx": {
+    "mtime": 1791768646.4510276,
+    "ast_hash": "221d36051283d7ccbaf88e0711357383",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/Toast.tsx": {
+    "mtime": 1791768646.4513662,
+    "ast_hash": "cbf873f98b121ad55e4b4b3f4e03fb6c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/ui/Select.tsx": {
+    "mtime": 1791768646.451154,
+    "ast_hash": "cf377a9c776a92cd442abb55fd1c29ea",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/screenshot/RegionSelector.tsx": {
+    "mtime": 1791770656.6332493,
+    "ast_hash": "03468b762f786ad845e787614d8855e2",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/screenshot/ScrollCapturePanel.tsx": {
+    "mtime": 1791770112.16074,
+    "ast_hash": "a95b1fa3081e353a70d698459ee37387",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/pin/PinnedImage.tsx": {
+    "mtime": 1791768646.4504514,
+    "ast_hash": "f0de1a367854cac701dbe20302a173e4",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/main/ShortcutRecorder.tsx": {
+    "mtime": 1791768646.450225,
+    "ast_hash": "700676bc8e975b5b3b16499631bb210c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/main/ScreenshotRow.tsx": {
+    "mtime": 1791768646.4499876,
+    "ast_hash": "c1fa77cdc3283fb65aa389840ba7026d",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/main/MainWindow.tsx": {
+    "mtime": 1791771062.6749387,
+    "ast_hash": "a114edb753ca928589f94f752c254d01",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/main/SettingsModal.tsx": {
+    "mtime": 1791770282.0634596,
+    "ast_hash": "099d37744e4f333a728983c1320f814c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/ZoomBar.tsx": {
+    "mtime": 1791768646.4493175,
+    "ast_hash": "776ca1db4299d29f2c9cdd6f8b3e87e9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/StitchPanel.tsx": {
+    "mtime": 1791768646.448874,
+    "ast_hash": "711b454c128ebba3961653e32ec6958a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/Toolbar.tsx": {
+    "mtime": 1791768646.4491947,
+    "ast_hash": "b30481ac73bc2f6c954c73044a0873a6",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/Editor.tsx": {
+    "mtime": 1791768646.4484081,
+    "ast_hash": "6d67b941f99afa326fbfc5cbb5d00b51",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/StyleBar.tsx": {
+    "mtime": 1791768646.4490623,
+    "ast_hash": "3ea4891034e8a639bfe57181c8297ef8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/OcrPanel.tsx": {
+    "mtime": 1791768646.4486024,
+    "ast_hash": "9067cb13d771397a5a6d4929030d2028",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/stageTypes.ts": {
+    "mtime": 1791768646.4494295,
+    "ast_hash": "78bea933e394804375dfe066a06175c3",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/useStageView.ts": {
+    "mtime": 1791768646.4495997,
+    "ast_hash": "027e5a3c241bcd8213d282ded20c1199",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/editor/Stage.tsx": {
+    "mtime": 1791768646.4487517,
+    "ast_hash": "d6691463d59a354f1b70133c8f11c5cc",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/onboarding/PermissionHelper.tsx": {
+    "mtime": 1791770122.5464308,
+    "ast_hash": "4d637ae2b8ddddcc14a2f2b3648239a9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/components/onboarding/Onboarding.tsx": {
+    "mtime": 1791770551.322477,
+    "ast_hash": "b6fdfa38042f0618ac0dfcc1d613b375",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/accelerator.ts": {
+    "mtime": 1791768646.4556112,
+    "ast_hash": "1d0ccbc537160a187bab6f81bbc232fd",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/sortScreenshots.ts": {
+    "mtime": 1791768646.4566553,
+    "ast_hash": "6642bdf78c4acefc8f182ed0eb41761b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/format.test.ts": {
+    "mtime": 1791768646.455705,
+    "ast_hash": "01f557a75cd8a1cf5e0a62c5fea23ceb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/mockLocale.ts": {
+    "mtime": 1791768646.456116,
+    "ast_hash": "9323f8875a93c07365806d330d3dd913",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/scrollProgress.ts": {
+    "mtime": 1791769968.499735,
+    "ast_hash": "7d3a691c9513eafbcbc90b50d42ba443",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/selectionGeometry.test.ts": {
+    "mtime": 1791768646.4563258,
+    "ast_hash": "bee0bd259146431f5af5d0fdcaad0160",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/scrollProgress.test.ts": {
+    "mtime": 1791769968.5016944,
+    "ast_hash": "6f3e39d573b1076baf5724d2f8af207a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/accelerator.test.ts": {
+    "mtime": 1791768646.455434,
+    "ast_hash": "83091d20d00090bc95222723eb782dce",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/sortScreenshots.test.ts": {
+    "mtime": 1791768646.4565423,
+    "ast_hash": "ec37290f712391033ecf0d1089ce1f1f",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/mockImage.ts": {
+    "mtime": 1791770251.2087746,
+    "ast_hash": "efda7b7e9aa0e6a380429f7d25fa498b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/platform.ts": {
+    "mtime": 1791770046.4465935,
+    "ast_hash": "848ba4803b7164657e26ab927492e7e2",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/mockLibrary.ts": {
+    "mtime": 1791770282.0640984,
+    "ast_hash": "4bdb01eaad885c92d96e203fe40518e4",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/mockOnboarding.ts": {
+    "mtime": 1791770075.222122,
+    "ast_hash": "5f25cd6568ad86f4cdc53db210de9fbe",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/format.ts": {
+    "mtime": 1791768646.4558136,
+    "ast_hash": "c96941c385a354882dcbad1f2a08278a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/onboardingSteps.test.ts": {
+    "mtime": 1791769968.4978354,
+    "ast_hash": "42c0f3289943ee83a285f7d3824e420a",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/selectionGeometry.ts": {
+    "mtime": 1791768646.456437,
+    "ast_hash": "c8485d75b6831a472e10884f5641bc95",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/lib/onboardingSteps.ts": {
+    "mtime": 1791769968.4957378,
+    "ast_hash": "f8c62803a5c2f98e7cfda5fbca0af489",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/index.tsx": {
+    "mtime": 1791768646.4544683,
+    "ast_hash": "4ca05b91bda891cce8c2023db954ea0c",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/main.ts": {
+    "mtime": 1791771062.6747608,
+    "ast_hash": "4c00a6e639367e87e0f96dfaaa072798",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/editor.ts": {
+    "mtime": 1791768646.454914,
+    "ast_hash": "17bce59965f0e4ed127dc59d30c5dad1",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/common.ts": {
+    "mtime": 1791768646.4547606,
+    "ast_hash": "8466354f37f9179ab00f22a929628ab8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/capture.ts": {
+    "mtime": 1791770020.4020605,
+    "ast_hash": "628b1ab26b97cf21c2dd6cf2fb7f875e",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/onboarding.ts": {
+    "mtime": 1791770148.1150284,
+    "ast_hash": "7cea379fce1d0e06216f5697e9e58ce6",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/i18n/messages/index.ts": {
+    "mtime": 1791769998.8138895,
+    "ast_hash": "0ac0e73532f0597b1226732df9b904cf",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/history.ts": {
+    "mtime": 1791768646.4526455,
+    "ast_hash": "9d2aee63c2446187ce5a38b785d9ff34",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/smartRedact.test.ts": {
+    "mtime": 1791768646.4535136,
+    "ast_hash": "6c0de8ca4e04eb190f61e2440f0d09a7",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/exportImage.ts": {
+    "mtime": 1791768646.451961,
+    "ast_hash": "830859d91c5ff9fb361cbaa463586b18",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/stitch.ts": {
+    "mtime": 1791768646.453854,
+    "ast_hash": "b6cfb6ee1ec42c87535651bf06035a57",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/crop.test.ts": {
+    "mtime": 1791768646.4517572,
+    "ast_hash": "84c7f4326d084978832a2a5f98c26adc",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/history.test.ts": {
+    "mtime": 1791768646.4524329,
+    "ast_hash": "9c1a424dad8beacee48a888780b11583",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/geometry.ts": {
+    "mtime": 1791768646.4523082,
+    "ast_hash": "72a7388291c6394a40a829c2008ec0b8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/keymap.test.ts": {
+    "mtime": 1791768646.4527793,
+    "ast_hash": "5123c86a9ae1dc0735a0696c176411f4",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/geometry.test.ts": {
+    "mtime": 1791768646.4521196,
+    "ast_hash": "e8832ee41ef99baea4d421316e7d09a1",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/stitch.test.ts": {
+    "mtime": 1791768646.4537425,
+    "ast_hash": "db567ee85366ecae7d0d3965b437dfcb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/textLayout.ts": {
+    "mtime": 1791768646.453963,
+    "ast_hash": "c9c4890e0ee6aebb1367df003cdc5d15",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/viewport.ts": {
+    "mtime": 1791768646.454296,
+    "ast_hash": "5d5cc06f5161067a55f67c9303406430",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/crop.ts": {
+    "mtime": 1791768646.4518595,
+    "ast_hash": "9c0bbdaa181b7758839fa617bb1197eb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/types.ts": {
+    "mtime": 1791768646.4540703,
+    "ast_hash": "74bd330f332fb3818ea79b4e69be7471",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/keymap.ts": {
+    "mtime": 1791768646.452916,
+    "ast_hash": "7ddea085ec9740a49af7783ba77a87c7",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/smartRedact.ts": {
+    "mtime": 1791768646.4536312,
+    "ast_hash": "f580c83a76fa3f4fe70330b915f524ed",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/presets.ts": {
+    "mtime": 1791768646.4532332,
+    "ast_hash": "87e3bed4f9fb73ddcece0dd56b35a087",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/renderAnnotations.ts": {
+    "mtime": 1791768646.4534032,
+    "ast_hash": "218e8abc73197a0a0d4709d88d86f744",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/viewport.test.ts": {
+    "mtime": 1791768646.4541783,
+    "ast_hash": "b755db81e03293df3522f906ecadd4cb",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/src/editor/presets.test.ts": {
+    "mtime": 1791768646.453041,
+    "ast_hash": "6b8a57a97dddffe984f3a00489050d95",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/index.html": {
+    "mtime": 1791768646.445368,
+    "ast_hash": "9feca1e9a04b499ca6ffbc8d84a05683",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/THIRD_PARTY_NOTICES.md": {
+    "mtime": 1791771147.593612,
+    "ast_hash": "fb2e3e7ff40f74191e0f0cb323bd5f59",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/README.md": {
+    "mtime": 1791768646.4399176,
+    "ast_hash": "890e047239850d2f08020e8322ab55c9",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/CLAUDE.md": {
+    "mtime": 1791770700.2313056,
+    "ast_hash": "f92824a290bf4e7b1b2b9b0b98771fc8",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/Docs/macOS.md": {
+    "mtime": 1791771130.766558,
+    "ast_hash": "1355a6dcfa4c4816373779af56ecd330",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/Docs/UI\u8bbe\u8ba1/UI\u8bbe\u8ba1.md": {
+    "mtime": 1791768646.4394,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/.github/workflows/build-mac.yml": {
+    "mtime": 1791770156.4790905,
+    "ast_hash": "62dfa958aafa290ef8a4fc3bd58c8bb0",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/public/icon.png": {
+    "mtime": 1791768646.447136,
+    "ast_hash": "3379b110a88e246b13584adeafc3064b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/public/trayTemplate@2x.png": {
+    "mtime": 1791768646.4473865,
+    "ast_hash": "0efcb3c10462381b1af4c3d23b06ae8b",
+    "semantic_hash": ""
+  },
+  "/Users/multimedia/githubxm/NewPath/public/trayTemplate.png": {
+    "mtime": 1791768646.4472792,
+    "ast_hash": "b156f32a10ba064943923e17aee4af86",
+    "semantic_hash": ""
+  }
+}

@@ -137,21 +137,16 @@ func bgraContext(_ data: UnsafeMutableRawPointer?, width: Int, height: Int) -> C
         bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
 }
 
-/// 把 BGRA 像素临时包成 CGImage 交给 `body`，不复制数据；图片不能在 `body` 之外继续使用。
-func withBGRAImage<Result>(
-    _ pixels: [UInt8], width: Int, height: Int, _ body: (CGImage?) -> Result
-) -> Result {
-    pixels.withUnsafeBytes { buffer in
-        guard height > 0, buffer.count >= width * height * 4,
-              let provider = CGDataProvider(
-                  dataInfo: nil, data: buffer.baseAddress!, size: width * height * 4, releaseData: { _, _, _ in })
-        else { return body(nil) }
-        let image = CGImage(
-            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGBitmapInfo(
-                rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
-            provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
-        return body(image)
-    }
+/// 把 BGRA 像素（每行 width * 4 字节）包成 CGImage，不复制数据；图片不能比 `pixels` 活得更久。
+func bgraImage(_ pixels: UnsafeRawPointer, width: Int, rows: Int) -> CGImage? {
+    guard rows > 0,
+          let provider = CGDataProvider(
+              dataInfo: nil, data: pixels, size: width * rows * 4, releaseData: { _, _, _ in })
+    else { return nil }
+    return CGImage(
+        width: width, height: rows, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!,
+        bitmapInfo: CGBitmapInfo(
+            rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+        provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
 }
