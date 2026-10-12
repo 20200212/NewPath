@@ -25,6 +25,13 @@ const CAPTURE_LIMIT_MS = 10 * 60 * 1000;
 /** 出错时在面板上显示这么久再结束。 */
 const ERROR_DISPLAY_MS = 2400;
 const SHORTCUT_KEYS = ["Escape", "Return"] as const;
+/**
+ * 边框和面板的置顶等级。Windows 上 Electron 把 floating 等几个"低于菜单"的等级实现为"紧贴在任务栏后面"
+ * （SetWindowPos 插到任务栏之后）；全屏的选区窗口还在时任务栏暂时不是 topmost，窗口就跟着变成普通窗口，
+ * 用户一点被截的页面，边框和面板就被盖住了。pop-up-menu 起的等级是真正的 HWND_TOPMOST。
+ * macOS 上保持 floating：低于菜单栏和系统弹出菜单。
+ */
+const OVERLAY_LEVEL = process.platform === "win32" ? "pop-up-menu" : "floating";
 
 interface Session {
 	frameHeight: number;
@@ -60,6 +67,8 @@ export interface ScrollDeps {
 	shortcutsEnabled: boolean;
 	/** Windows 10 2004 起：把边框和面板窗口从屏幕采集里排除（WDA_EXCLUDEFROMCAPTURE），它们就不会出现在长图里。 */
 	excludeFromCapture: boolean;
+	/** 让出前台时把 NewPath 的主窗口藏起来（结束后由调用方恢复）；macOS 上 app.hide() 已经包含了这一步。 */
+	hideMainWindow?: () => void;
 }
 
 function temporaryPath(prefix: string, extension: string) {
@@ -153,15 +162,29 @@ export class ScrollCaptureController {
 		return true;
 	}
 
+	/** Windows 上滚动期间临时排除采集的窗口（钉图、编辑器），结束时恢复。 */
+	private protectedWindows: BrowserWindow[] = [];
+
 	/**
-	 * 把前台还给正在滚动的应用，让它保持激活、接收键盘。隐藏应用会把所有窗口一起藏起来，
-	 * 所以再把原本开着的钉图和编辑器不抢焦点地显示回来。
+	 * 把前台还给正在滚动的应用，让它保持激活、接收键盘。macOS 上隐藏应用会把所有窗口一起藏起来，
+	 * 所以再把原本开着的钉图和编辑器不抢焦点地显示回来；截图进程本来就不截 NewPath 自己的窗口。
+	 * Windows 上没有"隐藏应用"：主窗口藏起来（它挡着页面，也会被截进去），钉图和编辑器留在屏幕上，
+	 * 但从屏幕采集里排除；焦点由调用方在选区窗口隐藏后用助手交给目标窗口。
 	 */
 	private yieldForeground() {
-		if (process.platform !== "darwin") return;
-		const showing = this.deps.visibleWindows().filter((win) => !win.isDestroyed() && win.isVisible());
-		app.hide();
-		for (const win of showing) win.showInactive();
+		if (process.platform === "darwin") {
+			const showing = this.deps.visibleWindows().filter((win) => !win.isDestroyed() && win.isVisible());
+			app.hide();
+			for (const win of showing) win.showInactive();
+			return;
+		}
+		this.deps.hideMainWindow?.();
+		if (!this.deps.excludeFromCapture) return;
+		for (const win of this.deps.visibleWindows()) {
+			if (win.isDestroyed() || !win.isVisible()) continue;
+			win.setContentProtection(true);
+			this.protectedWindows.push(win);
+		}
 	}
 
 	/** 选区四周慢慢转动的彩色边框；不接收鼠标，也不会被截进长图。 */
@@ -200,7 +223,7 @@ animation:turn 6s linear infinite}
 		win.webContents.on("will-navigate", (event) => event.preventDefault());
 		win.setIgnoreMouseEvents(true);
 		if (this.deps.excludeFromCapture) win.setContentProtection(true);
-		win.setAlwaysOnTop(true, "floating");
+		win.setAlwaysOnTop(true, OVERLAY_LEVEL);
 		win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 		void win
 			.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
@@ -235,7 +258,7 @@ animation:turn 6s linear infinite}
 			webPreferences: { backgroundThrottling: false },
 		});
 		if (this.deps.excludeFromCapture) panel.setContentProtection(true);
-		panel.setAlwaysOnTop(true, "floating", 1);
+		panel.setAlwaysOnTop(true, OVERLAY_LEVEL, 1);
 		panel.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
 		panel.once("ready-to-show", () => {
 			if (!panel.isDestroyed() && this.session?.panel === panel) panel.showInactive();
@@ -354,6 +377,8 @@ animation:turn 6s linear infinite}
 			}
 		}
 		for (const win of [session.panel, session.ring]) if (win && !win.isDestroyed()) win.destroy();
+		for (const win of this.protectedWindows) if (!win.isDestroyed()) win.setContentProtection(false);
+		this.protectedWindows = [];
 		void Promise.all([session.previewPath, `${session.previewPath}.part.jpg`].map((file) => fs.unlink(file).catch(() => {})));
 	}
 }

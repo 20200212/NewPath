@@ -27,7 +27,7 @@ const zhCN = {
 		status: {
 			waiting: "向下滚动页面，开始拼接",
 			capturing: "继续滚动，随时可以完成",
-			behind: "滚动太快了，慢一点就能跟上",
+			behind: "往回滚过的内容不会重复拼接",
 			lost: "跟丢了，请滚回上次停下的位置",
 			full: "已达到最大长度，可以完成了",
 			finishing: "正在生成长截图…",
@@ -76,7 +76,7 @@ export const capture: Record<Locale, typeof zhCN> = {
 			status: {
 				waiting: "向下捲動頁面，開始拼接",
 				capturing: "繼續捲動，隨時可以完成",
-				behind: "捲動太快了，慢一點就能跟上",
+				behind: "往回捲過的內容不會重複拼接",
 				lost: "跟丟了，請捲回上次停下的位置",
 				full: "已達到最大長度，可以完成了",
 				finishing: "正在產生長截圖…",
@@ -122,7 +122,7 @@ export const capture: Record<Locale, typeof zhCN> = {
 			status: {
 				waiting: "Scroll down to start stitching",
 				capturing: "Keep scrolling. Finish whenever you like.",
-				behind: "Scrolling too fast. Slow down to catch up.",
+				behind: "Content you scroll back over isn't added twice.",
 				lost: "Lost the spot. Scroll back to where you stopped.",
 				full: "Reached the maximum length",
 				finishing: "Building the long screenshot…",

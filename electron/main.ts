@@ -224,6 +224,13 @@ const scroll = scrollAgent
 			fixture: devOptions.scrollFixture,
 			shortcutsEnabled: devOptions.shortcutEnabled,
 			excludeFromCapture: supportsCaptureExclusion(process.platform, process.getSystemVersion()),
+			hideMainWindow: () => {
+				const win = mainWindow;
+				if (win && !win.isDestroyed() && win.isVisible() && !win.isMinimized()) {
+					restoreMainAfterCapture = true;
+					win.hide();
+				}
+			},
 		})
 	: null;
 
@@ -654,6 +661,28 @@ async function startScrollFromSession(session: CaptureSession, rect: Rect) {
 	}
 	scrollContext = { mode: session.mode, stitchTarget: session.stitchTarget };
 	closeCaptureSession({ keepHidden: true });
+	if (process.platform === "win32") void handFocusToScrollTarget(session, rect);
+}
+
+/**
+ * Windows：选区窗口隐藏后前台往往落在 NewPath 自己的某个隐藏窗口上，用户的键盘和滚轮就没地方去了。
+ * 把前台交给选区中心处最前面的那个窗口（截图时识别出的窗口列表按 Z 序排列），没识别到就让助手按坐标找。
+ */
+async function handFocusToScrollTarget(session: CaptureSession, rect: Rect) {
+	const center = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+	const target =
+		session.windows?.find(
+			(item) =>
+				item.id !== undefined &&
+				center.x >= item.rect.x &&
+				center.x < item.rect.x + item.rect.width &&
+				center.y >= item.rect.y &&
+				center.y < item.rect.y + item.rect.height,
+		) ?? null;
+	const { bounds } = session.display;
+	const point = screen.dipToScreenPoint({ x: Math.round(bounds.x + center.x), y: Math.round(bounds.y + center.y) });
+	const result = await windowsHelper.activateWindow(target?.id ?? null, point, process.pid);
+	writeDiagnostic("scroll-focus-handoff", { known: target !== null, result });
 }
 
 function finishScrollSession(image: NativeImage | null) {

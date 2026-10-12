@@ -172,7 +172,7 @@ export interface OnboardingState {
 }
 
 /**
- * 滚动截图的状态。waiting：等待开始滚动；capturing：正在拼接；behind：滚动太快，跟不上；
+ * 滚动截图的状态。waiting：等待开始滚动；capturing：正在拼接；behind：往回滚到了长图里已有的地方（不会重复拼接，不是错误）；
  * lost：找不到和上一屏重叠的部分；full：达到长度上限；finishing：正在生成长图；error：失败，稍后自动结束。
  */
 export type ScrollStatus = "waiting" | "capturing" | "behind" | "lost" | "full" | "finishing" | "error";

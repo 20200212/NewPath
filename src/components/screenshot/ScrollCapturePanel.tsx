@@ -8,7 +8,7 @@ import { displayedScrollStatus, isScrollLive, LOST_GRACE_MS, screensCount } from
 const STATUS_COLORS: Record<ScrollStatus, string> = {
 	waiting: "text-white/65",
 	capturing: "text-white/65",
-	behind: "text-apple-orange",
+	behind: "text-white/65",
 	lost: "text-[#FFD60A]",
 	full: "text-apple-green",
 	finishing: "text-white/65",

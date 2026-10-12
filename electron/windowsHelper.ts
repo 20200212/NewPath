@@ -11,6 +11,7 @@ import { parseRawWindows, type RawWindow } from "./windowRects";
  *   window <请求号> <HWND> <PNG 路径>          → <请求号> {"width","height"}   单独截取一个窗口（PrintWindow）
  *   scroll-start <请求号> <x> <y> <w> <h>       → <请求号> ok                   开始连续截取屏幕上的这块区域（物理像素）
  *   scroll-stop <请求号>                        → <请求号> ok
+ *   activate <请求号> <HWND> <x> <y>           → <请求号> ok <方式>        把前台交给这个窗口（HWND 为 0 时取 x,y 处的窗口）
  *
  * 出错时回 "<请求号> error <原因>"。滚动截取的每一帧以 "frame <序号> <宽> <高> <字节数>\n" 加原始 BGRA 字节
  * 主动写到 stdout，由 HelperStreamParser 切开。所有输出都经过 C# 里同一把锁，文本和帧不会交错。
@@ -34,6 +35,9 @@ public static class NewPathWindows {
 	private struct NativeRect { public int Left; public int Top; public int Right; public int Bottom; }
 
 	[StructLayout(LayoutKind.Sequential)]
+	private struct NativePoint { public int X; public int Y; }
+
+	[StructLayout(LayoutKind.Sequential)]
 	private struct BitmapInfoHeader {
 		public int Size; public int Width; public int Height; public short Planes; public short BitCount;
 		public int Compression; public int SizeImage; public int XPelsPerMeter; public int YPelsPerMeter;
@@ -52,6 +56,13 @@ public static class NewPathWindows {
 	[DllImport("user32.dll")] private static extern int GetWindowTextLengthW(IntPtr hWnd);
 	[DllImport("user32.dll")] private static extern IntPtr SetProcessDpiAwarenessContext(IntPtr value);
 	[DllImport("user32.dll")] private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+	[DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
+	[DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
+	[DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+	[DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+	[DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr hWnd);
+	[DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint attachTo, bool flag);
+	[DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
 	[DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
 	[DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hdc);
 	[DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
@@ -71,6 +82,7 @@ public static class NewPathWindows {
 	private const int MAX_WINDOWS = 200;
 	private const int MIN_SIZE = 40;
 	private const uint PW_RENDERFULLCONTENT = 2;
+	private const uint GA_ROOT = 2;
 	private const uint SRCCOPY = 0x00CC0020;
 	private const uint CAPTUREBLT = 0x40000000;
 	// 帧的节拍：最快 30fps；大选区按字节数放慢，总吞吐大约不超过 120MB/s
@@ -198,6 +210,41 @@ public static class NewPathWindows {
 		}
 	}
 
+	/// 把前台交给目标窗口，滚动截图期间用户的滚轮和键盘才会落到被截的页面上。
+	/// handle 为 0 或已失效时取屏幕上 (x, y) 处的窗口（跳过鼠标穿透的窗口，所以不会选中我们自己的边框）。
+	/// 本进程由前台进程（NewPath）启动，通常可以直接 SetForegroundWindow；不行时把输入队列挂到前台线程上再试。
+	public static string Activate(long handle, int x, int y, uint excludeProcessId) {
+		IntPtr target = new IntPtr(handle);
+		if (target == IntPtr.Zero || !IsWindow(target) || !IsWindowVisible(target) || IsIconic(target)) {
+			NativePoint point = new NativePoint();
+			point.X = x;
+			point.Y = y;
+			IntPtr hit = WindowFromPoint(point);
+			if (hit != IntPtr.Zero) hit = GetAncestor(hit, GA_ROOT);
+			uint processId;
+			GetWindowThreadProcessId(hit, out processId);
+			if (hit == IntPtr.Zero || processId == excludeProcessId) throw new Exception("no-target");
+			target = hit;
+		}
+		IntPtr foreground = GetForegroundWindow();
+		if (foreground == target) return "ok already";
+		if (SetForegroundWindow(target) && GetForegroundWindow() == target) return "ok direct";
+		uint ignored;
+		uint me = GetCurrentThreadId();
+		uint foregroundThread = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out ignored);
+		uint targetThread = GetWindowThreadProcessId(target, out ignored);
+		bool attachedForeground = foregroundThread != 0 && foregroundThread != me && AttachThreadInput(me, foregroundThread, true);
+		bool attachedTarget = targetThread != 0 && targetThread != me && targetThread != foregroundThread && AttachThreadInput(me, targetThread, true);
+		try {
+			BringWindowToTop(target);
+			SetForegroundWindow(target);
+		} finally {
+			if (attachedForeground) AttachThreadInput(me, foregroundThread, false);
+			if (attachedTarget) AttachThreadInput(me, targetThread, false);
+		}
+		return GetForegroundWindow() == target ? "ok attached" : "failed";
+	}
+
 	/// 开始连续截取屏幕区域（物理像素、全局坐标），每一帧有变化时写到 stdout。
 	public static void StartScroll(int x, int y, int width, int height) {
 		StopScroll();
@@ -300,6 +347,10 @@ while ($true) {
 				[NewPathWindows]::Reply($req + ' ok')
 			}
 			'scroll-stop' { [NewPathWindows]::StopScroll(); [NewPathWindows]::Reply($req + ' ok') }
+			'activate' {
+				$point = $parts[3].Split(' ')
+				[NewPathWindows]::Reply($req + ' ' + [NewPathWindows]::Activate([int64]$parts[2], [int]$point[0], [int]$point[1], [uint32]$point[2]))
+			}
 			default { [NewPathWindows]::Reply($req + ' error unknown-command') }
 		}
 	} catch {
@@ -437,6 +488,21 @@ export class WindowsHelper {
 			return false;
 		}
 		return true;
+	}
+
+	/**
+	 * 把前台交给窗口 hwnd（为 null 时取屏幕上 point 处的窗口，物理像素）。返回助手用的方式（"already" / "direct" / "attached"），
+	 * 失败返回 null。滚动截图开始、选区窗口隐藏之后调用，用户的滚轮和键盘才会落到被截的页面上。
+	 */
+	async activateWindow(hwnd: number | null, point: { x: number; y: number }, excludeProcessId: number): Promise<string | null> {
+		const handle = hwnd !== null && Number.isSafeInteger(hwnd) && hwnd > 0 ? hwnd : 0;
+		const payload = await this.request(
+			"activate",
+			[String(handle), String(Math.round(point.x)), String(Math.round(point.y)), String(excludeProcessId)],
+			REQUEST_TIMEOUT_MS,
+		);
+		if (!payload || !payload.startsWith("ok")) return null;
+		return payload.slice(3) || "ok";
 	}
 
 	async stopScroll(): Promise<void> {
